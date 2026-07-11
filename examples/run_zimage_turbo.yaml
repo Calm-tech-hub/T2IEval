@@ -1,0 +1,19 @@
+model: diffusers
+model_args:
+  pipeline: ZImagePipeline
+  pretrained: Tongyi-MAI/Z-Image-Turbo
+  dtype: bfloat16
+  disable_safety_checker: true
+
+generation:
+  steps: 8
+  guidance_scale: 0.0
+  seed: 42
+  width: 1024
+  height: 1024
+
+evaluations:
+  geneval:
+    eval_args:
+      num_samples: 2
+      sample_dir: ./samples

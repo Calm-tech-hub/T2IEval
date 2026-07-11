@@ -1,0 +1,15 @@
+model: diffusers
+model_args:
+  pretrained: runwayml/stable-diffusion-v1-5
+  dtype: float16
+  disable_safety_checker: true
+
+generation:
+  steps: 20
+  guidance_scale: 7.5
+  seed: 42
+
+evaluations:
+  geneval:
+    eval_args:
+      num_samples: 16

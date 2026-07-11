@@ -1,0 +1,23 @@
+model: diffusers
+model_args:
+  pretrained: stabilityai/stable-diffusion-xl-base-1.0
+  dtype: bfloat16
+  disable_safety_checker: true
+
+generation:
+  steps: 30
+  guidance_scale: 6.5
+  seed: 314159
+  width: 768
+  height: 768
+
+evaluations:
+  geneval:
+    eval_args:
+      num_samples: 24
+      category: colors
+    gen_args:
+      num_images_per_prompt: 2
+
+output:
+  dir: results_suite

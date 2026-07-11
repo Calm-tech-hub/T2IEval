@@ -1,0 +1,27 @@
+model: diffusers
+
+model_args:
+  pretrained: stable-diffusion-v1-5/stable-diffusion-v1-5
+  dtype: float16
+  disable_safety_checker: true
+  enable_attention_slicing: true
+
+generation:
+  steps: 50
+  guidance_scale: 12.0
+  seed: 42
+  width: 512
+  height: 512
+  num_images_per_prompt: 4
+
+evaluations:
+  ella:
+    eval_args:
+      dataset_name: Vertsineu/ella
+      split: validation
+      vqa_model_id: damo/mplug_visual-question-answering_coco_large_en
+      missing_dependency_policy: zero
+      category_image_policy: official_last_image
+
+output:
+  dir: /root/autodl-tmp/exam/results_ella_sd15
