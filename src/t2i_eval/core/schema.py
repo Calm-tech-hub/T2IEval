@@ -33,6 +33,9 @@ class EvaluatorConfig(BaseModel):
     # if None, do not store any generated samples
     sample_dir: str | None = None
 
+    # Reuse complete samples previously written to ``sample_dir``.
+    resume: bool = False
+
 
 class GenerationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -46,9 +49,32 @@ class GenerationConfig(BaseModel):
     height: int | None = None
     num_images_per_prompt: int = 1
 
+    # Model-specific generation arguments.  Keeping these in a dedicated
+    # mapping lets adapters support new pipelines without changing this core
+    # schema for every upstream release.
+    extra_kwargs: dict[str, Any] = Field(default_factory=dict)
+
 
 class GenerationResult(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     images: list[PIL.Image.Image]
     debug_info: dict[str, Any] = Field(default_factory=dict)
+
+
+class GenerationRequest(GenerationConfig):
+    """Stable model-adapter request contract.
+
+    ``GenerationConfig`` remains the backwards-compatible benchmark-facing
+    type.  New adapters may use ``sample_id`` to preserve identity across
+    batching and retries.
+    """
+
+    sample_id: str | None = None
+
+
+class GenerationOutput(GenerationResult):
+    """Stable model-adapter output contract."""
+
+    sample_id: str | None = None
+    error: str | None = None

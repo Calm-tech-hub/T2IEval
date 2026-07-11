@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import re
+import traceback
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from ..core import registry
 from ..core.schema import GenerationConfig
-from .logger import CliLogger
 from . import schemas
+from .artifacts import ArtifactWriter
+from .logger import CliLogger
 
 
 def _safe_name(name: str) -> str:
@@ -23,7 +24,7 @@ class Runner:
     def __init__(
         self,
         config: schemas.RunConfig,
-        logger: Optional[CliLogger] = None,
+        logger: CliLogger | None = None,
         accelerator=None,
         show_summary: bool = True,
     ):
@@ -33,25 +34,51 @@ class Runner:
         self._model = None
         self.show_summary = show_summary
 
-    def run(self) -> List[schemas.EvaluationResult]:
-        model = self._init_model()
-        results: List[schemas.EvaluationResult] = []
+    def run(self) -> list[schemas.EvaluationResult]:
+        model = None
+        results: list[schemas.EvaluationResult] = []
 
         for eval_spec in self.config.evaluations:
+            gen_cfg = self._build_generation_config(eval_spec)
+            artifact_writer = ArtifactWriter(
+                self.config.output.dir,
+                self.config.model,
+                eval_spec,
+                gen_cfg.model_dump(),
+            )
+            if self.config.output.write_artifacts:
+                artifact_writer.initialize()
+            caught_exception = None
             try:
-                result = self._run_single(model, eval_spec)
+                if model is None:
+                    model = self._init_model()
+                result, evaluator = self._run_single(model, eval_spec, gen_cfg, artifact_writer)
+                sample_records = getattr(evaluator, "sample_records", None)
+                if self.config.output.write_artifacts:
+                    if sample_records is not None:
+                        artifact_writer.write_samples(sample_records)
+                    artifact_records = getattr(evaluator, "artifact_records", {})
+                    for filename, records in artifact_records.items():
+                        artifact_writer.write_jsonl(filename, records)
             except Exception as exc:  # noqa: BLE001
                 self.logger.error(f"[{eval_spec.name}] failed: {exc}")
                 if self.show_summary:
                     self.logger.error(f"[{eval_spec.name}] FAILED: {exc}")
-                if self.config.fail_fast:
-                    raise
+                caught_exception = exc
                 result = schemas.EvaluationResult(
                     eval_name=eval_spec.name,
                     metrics={},
-                    error=str(exc),
+                    error="".join(traceback.format_exception(exc)),
                 )
+            output_path = self._write_result(result, gen_cfg)
+            if self.config.output.write_artifacts:
+                artifact_writer.write_result(result)
+            if self.show_summary and result.error is None:
+                summary = self._format_metrics(result.metrics)
+                self.logger.info(f"[{eval_spec.name}] metrics={summary} -> {output_path}")
             results.append(result)
+            if caught_exception is not None and self.config.fail_fast:
+                raise caught_exception
         return results
 
     # --- internals ----------------------------------------------------- #
@@ -81,14 +108,18 @@ class Runner:
         return model
 
     def _build_generation_config(self, eval_spec: schemas.EvaluationSpec) -> GenerationConfig:
-        merged: Dict = {}
+        merged: dict = {}
         merged.update(self.config.generation.params or {})
         merged.update(eval_spec.gen_override or {})
         return GenerationConfig(**merged)
 
-    def _run_single(self, model, eval_spec: schemas.EvaluationSpec) -> schemas.EvaluationResult:
-        gen_cfg = self._build_generation_config(eval_spec)
-
+    def _run_single(
+        self,
+        model,
+        eval_spec: schemas.EvaluationSpec,
+        gen_cfg: GenerationConfig,
+        artifact_writer: ArtifactWriter,
+    ) -> tuple[schemas.EvaluationResult, object]:
         evaluator_cls = registry.get_evaluator_class(eval_spec.name)
         if evaluator_cls is None:
             raise ValueError(f"Evaluator '{eval_spec.name}' is not registered")
@@ -97,7 +128,11 @@ class Runner:
         eval_kwargs.setdefault("device", self.config.model.args.get("device", "cuda"))
         if self.accelerator is not None:
             eval_kwargs.setdefault("accelerator", self.accelerator)
-        eval_kwargs.setdefault("sample_dir", None)
+        if self.config.output.save_images or self.config.output.resume:
+            eval_kwargs.setdefault("sample_dir", str(artifact_writer.images_dir))
+        else:
+            eval_kwargs.setdefault("sample_dir", None)
+        eval_kwargs.setdefault("resume", self.config.output.resume)
         eval_kwargs.setdefault("generation_config", gen_cfg.model_dump())
 
         try:
@@ -114,11 +149,7 @@ class Runner:
             error=None,
         )
 
-        output_path = self._write_result(result, gen_cfg)
-        if self.show_summary:
-            summary = self._format_metrics(result.metrics)
-            self.logger.info(f"[{eval_spec.name}] metrics={summary} -> {output_path}")
-        return result
+        return result, evaluator
 
     def _write_result(self, result: schemas.EvaluationResult, gen_cfg: GenerationConfig) -> Path:
         output_dir = Path(self.config.output.dir)
@@ -138,7 +169,7 @@ class Runner:
         path.write_text(json.dumps(payload, indent=2))
         return path
 
-    def _format_metrics(self, metrics: Dict) -> str:
+    def _format_metrics(self, metrics: dict) -> str:
         try:
             return json.dumps(metrics, ensure_ascii=False, separators=(",", ":"))
         except TypeError:

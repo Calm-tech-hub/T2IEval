@@ -20,6 +20,9 @@ class DiffusersConfig(ModelConfig):
     disable_safety_checker: bool = False
     scheduler: str | None = None
 
+    # Keep benchmark-level progress readable instead of printing one bar per image.
+    show_denoising_progress: bool = False
+
     # LoRA Configuration
     lora_path: str | None = None
     lora_weight_name: str | None = None
@@ -66,6 +69,50 @@ class DiffusersModel(BaseModel):
             return False
         return name in signature.parameters
 
+    def _filter_pipeline_kwargs(self, kwargs: dict) -> dict:
+        """Keep only arguments accepted by the selected pipeline.
+
+        Pipelines with ``**kwargs`` explicitly opt into arbitrary parameters.
+        This preserves current SD/SDXL behavior while allowing FLUX, SD3 and
+        future adapters to omit unsupported common arguments.
+        """
+
+        assert self.pipeline is not None, "Pipeline must be initialized before inspection."
+        try:
+            signature = inspect.signature(self.pipeline.__call__)
+        except (TypeError, ValueError):
+            return kwargs
+
+        parameters = signature.parameters
+        accepts_var_kwargs = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+        if accepts_var_kwargs:
+            return kwargs
+        return {key: value for key, value in kwargs.items() if key in parameters}
+
+    @staticmethod
+    def _extract_images(output) -> list:
+        """Normalize common Diffusers pipeline output shapes."""
+
+        if hasattr(output, "images"):
+            return list(output.images)
+        if isinstance(output, dict) and "images" in output:
+            return list(output["images"])
+        if isinstance(output, list) and (
+            not output or hasattr(output[0], "save")
+        ):
+            return output
+        if isinstance(output, (tuple, list)) and output:
+            first = output[0]
+            if isinstance(first, (tuple, list)):
+                return list(first)
+        raise TypeError(
+            "Pipeline output does not expose images via `.images`, "
+            "`['images']`, or the first tuple element."
+        )
+
     def enable_accelerator(self, accelerator: Accelerator):
         if self._loaded:
             raise RuntimeError(
@@ -107,6 +154,11 @@ class DiffusersModel(BaseModel):
             variant=self.config.variant,
             revision=self.config.revision,
         )
+
+        if hasattr(self.pipeline, "set_progress_bar_config"):
+            self.pipeline.set_progress_bar_config(
+                disable=not self.config.show_denoising_progress
+            )
 
         if self.config.scheduler is not None and self.pipeline is not None:
             scheduler = getattr(diffusers, self.config.scheduler, None)
@@ -235,9 +287,13 @@ class DiffusersModel(BaseModel):
         if self.config.output_type is not None and self._pipeline_supports("output_type"):
             pipeline_kwargs["output_type"] = self.config.output_type
 
-        images = self.pipeline(
-            **pipeline_kwargs,
-        ).images  # pyright: ignore[reportCallIssue]
+        # Explicit model-specific values win over common defaults.  Signature
+        # filtering below prevents them from leaking into unrelated pipelines.
+        pipeline_kwargs.update(config.extra_kwargs)
+        pipeline_kwargs = self._filter_pipeline_kwargs(pipeline_kwargs)
+
+        output = self.pipeline(**pipeline_kwargs)
+        images = self._extract_images(output)
         latency = time.time() - start_time
 
         return GenerationResult(images=images, debug_info={"latency": latency})

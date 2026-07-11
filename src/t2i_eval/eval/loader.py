@@ -4,11 +4,12 @@ from typing import Any
 
 from datasets import Dataset, load_dataset
 
+from t2i_eval.core.benchmark import BenchmarkSample
 from t2i_eval.core.schema import GenerationConfig
 
 RowToEvalItems = Callable[
     [dict[str, Any], GenerationConfig],
-    list[tuple[GenerationConfig, dict[str, Any]]],
+    list[BenchmarkSample],
 ]
 
 
@@ -51,7 +52,7 @@ def load_hf_records(
     seed: int | None = None,
     deserialize_columns: list[str] | None = None,
     column_deserializers: dict[str, Callable[[Any], Any]] | None = None,
-) -> list[tuple[GenerationConfig, dict[str, Any]]]:
+) -> list[BenchmarkSample]:
     """
     Load a HuggingFace split and directly build evaluator items.
 
@@ -63,7 +64,7 @@ def load_hf_records(
     deserialize_set = set(deserialize_columns or [])
     deserializers = column_deserializers or {}
 
-    result: list[tuple[GenerationConfig, dict[str, Any]]] = []
+    result: list[BenchmarkSample] = []
     for row in dataset:
         record = dict(row)
         for column in deserialize_set:

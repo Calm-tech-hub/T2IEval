@@ -42,6 +42,7 @@ dependencies = [
     "sortedcontainers>=2.4.0",
     "tenacity>=9.1.2",
     "timm>=1.0.24",
+    "t2v-metrics==1.1",
     "torch>=2.9.1",
     "tqdm>=4.67.1",
     "transformers>=4.30.0",
@@ -81,3 +82,38 @@ addopts = "--cov=src/t2i_eval"
 
 [tool.uv.sources]
 fairseq = { git = "https://github.com/One-sixth/fairseq" }
+
+[tool.uv]
+# t2v-metrics 1.1 declares every scorer backend as a hard dependency, even
+# though GenAI-Bench imports only its CLIP-FlanT5 implementation.  Those
+# unrelated backends include hpsv2 (protobuf<4), which conflicts with the
+# ModelScope/Qwen stack used elsewhere in this project (protobuf>=6.33.5).
+# The CLIP-FlanT5 runtime requirements are already direct project dependencies.
+exclude-dependencies = [
+    { package = { name = "t2v-metrics", version = "1.1" }, dependencies = [
+        "datasets",
+        "fairscale",
+        "fire",
+        "ftfy",
+        "gdown",
+        "hpsv2",
+        "huggingface-hub",
+        "image-reward",
+        "iopath",
+        "matplotlib",
+        "numpy",
+        "omegaconf",
+        "open-clip-torch",
+        "openai",
+        "opencv-python",
+        "opencv-python-headless",
+        "pandas",
+        "pycocoevalcap",
+        "scikit-learn",
+        "scipy",
+        "sentencepiece",
+        "tokenizers",
+        "tqdm",
+        "transformers",
+    ] },
+]

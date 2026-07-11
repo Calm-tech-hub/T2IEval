@@ -1,5 +1,6 @@
 from typing import Any
 
+from t2i_eval.core.benchmark import SampleEvaluation
 from t2i_eval.eval.utils.misc import (
     Reduction,
     aggregate_numbers,
@@ -9,7 +10,7 @@ from t2i_eval.eval.utils.misc import (
 
 
 def aggregate_metric(
-    metadatas: list[dict[str, Any]],
+    results: list[SampleEvaluation],
     value_key: str,
     output_key: str,
     reduction: Reduction = Reduction.MEAN,
@@ -18,6 +19,8 @@ def aggregate_metric(
     default: float = 0.0,
 ) -> dict[str, Any]:
     """Aggregate metrics with simple float values under each sample metadata."""
+
+    metadatas = [result.metadata for result in results]
 
     if group_by is None:
         values = [get_nested_value(metadata, value_key) for metadata in metadatas]
@@ -57,7 +60,7 @@ def aggregate_metric(
 
 
 def aggregate_metric_from_list(
-    metadatas: list[dict[str, Any]],
+    results: list[SampleEvaluation],
     list_key: str,
     value_key: str,
     output_key: str,
@@ -77,6 +80,8 @@ def aggregate_metric_from_list(
         ]
       }
     """
+    metadatas = [result.metadata for result in results]
+
     if group_by is None:
         values: list[Any] = []
         for metadata in metadatas:

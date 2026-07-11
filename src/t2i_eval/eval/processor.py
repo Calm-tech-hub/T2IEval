@@ -1,9 +1,10 @@
 import random
 from typing import Any
 
+from t2i_eval.core.benchmark import BenchmarkSample
 from t2i_eval.eval.utils.misc import get_nested_value, match_condition
 
-DataItem = tuple[Any, dict[str, Any]]
+DataItem = BenchmarkSample
 
 
 def filter(
@@ -19,15 +20,15 @@ def filter(
     - {"metadata.include.0.count": lambda x: x >= 2}
     """
     result: list[DataItem] = []
-    for gen_config, metadata in data:
+    for item in data:
         matched = True
         for key_path, expected in conditions.items():
-            value = get_nested_value(metadata, key_path)
+            value = get_nested_value(item.metadata, key_path)
             if not match_condition(value, expected):
                 matched = False
                 break
         if matched:
-            result.append((gen_config, metadata))
+            result.append(item)
     return result
 
 
@@ -60,7 +61,7 @@ def sample(
 
     grouped: dict[Any, list[DataItem]] = {}
     for item in data:
-        group_key = get_nested_value(item[1], group_by)
+        group_key = get_nested_value(item.metadata, group_by)
         grouped.setdefault(group_key, []).append(item)
 
     result: list[DataItem] = []

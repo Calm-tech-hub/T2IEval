@@ -28,9 +28,9 @@
   - 封装 ModelScope mPLUG，并实现问题依赖传播。
 - `tests/ella_test.py`
   - 覆盖注册、默认参数、依赖传播、分类口径和 CSV 分组。
-- `examples/run_ella_sd15.yaml`
+- `examples/ella/run_ella_sd15.yaml`
   - 提供 SD1.5 正式评测配置。
-- `docs/ella_implementation_notes.md`
+- `docs/implementation/ella.md`
   - 本实现说明。
 
 ### 修改
@@ -269,7 +269,7 @@ cd /root/autodl-tmp/exam/T2IEval-test
 export HF_HOME=/root/autodl-tmp/hf_cache
 export MODELSCOPE_CACHE=/root/autodl-tmp/modelscope_cache
 
-uv run --no-sync t2i-eval -f examples/run_ella_sd15.yaml
+uv run --no-sync t2i-eval -f examples/ella/run_ella_sd15.yaml
 ```
 
 正式配置会评测 1065 个 prompt，每条生成 4 张图，共 4260 张图片，并对每张图片执行对应的 DPG 问题集。该运行的耗时主要来自约 57564 次 mPLUG VQA 推理。

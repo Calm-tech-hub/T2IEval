@@ -9,6 +9,7 @@ This directory explains every CLI flag and the underlying configuration objects 
 | [`evaluators/geneval.md`](evaluators/geneval.md) | GenEval-specific evaluator args and generation overrides |
 | [`evaluators/ella.md`](evaluators/ella.md) | ELLA task spec for the exam package |
 | [`evaluators/genaibench.md`](evaluators/genaibench.md) | GenAI-Bench task spec for the exam package |
+| [`evaluators/t2i_corebench.md`](evaluators/t2i_corebench.md) | T2I-CoReBench generation/existing-image and local-Qwen evaluation |
 
 Recommended workflow:
 

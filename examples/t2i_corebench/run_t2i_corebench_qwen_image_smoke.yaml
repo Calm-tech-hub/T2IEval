@@ -1,0 +1,46 @@
+# End-to-end smoke test: generate one Qwen-Image sample and score it locally.
+model: diffusers
+
+model_args:
+  pretrained: /root/autodl-tmp/modelscope_cache/models/Qwen/Qwen-Image
+  pipeline: DiffusionPipeline
+  dtype: bfloat16
+  show_denoising_progress: true
+  enable_vae_tiling: true
+
+generation:
+  steps: 50
+  guidance_scale: 4.0
+  seed: 0
+  width: 1328
+  height: 1328
+  num_images_per_prompt: 1
+  negative_prompt: " "
+  extra_kwargs:
+    guidance_scale: null
+    true_cfg_scale: 4.0
+
+evaluations:
+  t2i_corebench:
+    eval_args:
+      data_dir: /root/autodl-tmp/exam/Benchmark_code/T2I-CoReBench/data
+      dimensions:
+        - C-MI
+      num_prompts: 1
+
+      judge_backend: qwen_subprocess
+      judge_model: /root/autodl-tmp/modelscope_cache/models/Qwen/Qwen3.5-9B
+      judge_python: /root/autodl-tmp/corebench-judge/.venv/bin/python
+      judge_cache_path: /root/autodl-tmp/exam/results_t2i_corebench_smoke/judge_cache.jsonl
+      judge_batch_size: 8
+      judge_max_rounds: 3
+      judge_initial_max_tokens: 512
+      judge_gpu_memory_utilization: 0.80
+      judge_tensor_parallel_size: 1
+      judge_request_chunk_size: 256
+
+output:
+  dir: /root/autodl-tmp/exam/results_t2i_corebench_smoke
+  save_images: true
+  resume: false
+  write_artifacts: true

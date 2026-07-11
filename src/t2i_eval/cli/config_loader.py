@@ -73,9 +73,15 @@ def _merge_generation(config: schemas.RunConfig, params: Dict) -> None:
         config.generation.params.update(params)
 
 
-def _merge_output(config: schemas.RunConfig, output_dir: str | None) -> None:
-    if output_dir:
-        config.output.dir = output_dir
+def _merge_output(config: schemas.RunConfig, output: str | Dict | None) -> None:
+    if isinstance(output, str):
+        config.output.dir = output
+        return
+    if not isinstance(output, dict):
+        return
+    for key in ("dir", "save_images", "resume", "write_artifacts"):
+        if key in output:
+            setattr(config.output, key, output[key])
 
 
 def _merge_evaluations(
@@ -140,7 +146,10 @@ def load_run_config(cli_kwargs: Dict) -> schemas.RunConfig:
 
         _merge_model(cfg, data.get("model"), data.get("model_args", {}))
         _merge_generation(cfg, data.get("generation", {}))
-        _merge_output(cfg, data.get("output", {}).get("dir") if isinstance(data.get("output"), dict) else data.get("output_dir"))
+        output_data = data.get("output")
+        if output_data is None:
+            output_data = data.get("output_dir")
+        _merge_output(cfg, output_data)
 
         cfg_evals = _build_evaluation_specs(data.get("evaluations", {}))
     else:
@@ -150,6 +159,8 @@ def load_run_config(cli_kwargs: Dict) -> schemas.RunConfig:
     _merge_model(cfg, cli_kwargs.get("model"), cli_kwargs.get("model_args", {}))
     _merge_generation(cfg, cli_kwargs.get("gen", {}))
     _merge_output(cfg, cli_kwargs.get("output_dir"))
+    if cli_kwargs.get("save_intermediate"):
+        cfg.output.save_images = True
 
     # CLI parity: accept either dicts (e.g. tests) or raw strings using `name:key=value`.
     # Prefer explicit dicts over raw strings when both are provided.

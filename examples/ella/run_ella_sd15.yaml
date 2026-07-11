@@ -5,6 +5,7 @@ model_args:
   dtype: float16
   disable_safety_checker: true
   enable_attention_slicing: true
+  show_denoising_progress: false
 
 generation:
   steps: 50
@@ -19,7 +20,7 @@ evaluations:
     eval_args:
       dataset_name: Vertsineu/ella
       split: validation
-      vqa_model_id: damo/mplug_visual-question-answering_coco_large_en
+      vqa_model_id: /root/autodl-tmp/modelscope_cache/damo/mplug_visual-question-answering_coco_large_en
       missing_dependency_policy: zero
       category_image_policy: official_last_image
 

@@ -2,7 +2,7 @@
 
 Run text-to-image evaluation with a single command.
 
-| [Quick Start](#0-first-contact) | [Examples](#1-reading-the-examples) | [Parameter Docs](#21-documentation-map) | [CLI Reference](#3-cli-quick-reference) | [Extending](docs/extending.md) |
+| [Quick Start](#0-first-contact) | [Examples](#1-reading-the-examples) | [Parameter Docs](#21-documentation-map) | [CLI Reference](#3-cli-quick-reference) | [Extending](docs/guides/extending.md) |
 | --- | --- | --- | --- | --- |
 
 If this is your first visit, run one short command first and keep scrolling. The rest of the page gradually shifts from runnable snippets to customization details, so the abstract parts stay grounded in something you have already executed.
@@ -12,7 +12,10 @@ If this is your first visit, run one short command first and keep scrolling. The
 ## 0. First Contact
 
 T2IEval is designed for quick iteration: run something small, confirm it works, then scale.
-In this exam package, `geneval` is the provided reference implementation. `genaibench` and `ella` are described in the docs as implementation tasks and are intentionally not shipped as full implementations.
+In this exam implementation, `geneval` is the provided reference evaluator and both
+`genaibench` and `ella` are integrated behind the same CLI and result schema.
+The optional `t2i_corebench` evaluator demonstrates the same interfaces on a
+12-dimension composition-and-reasoning benchmark with a local Qwen judge.
 
 ### 0.1 Environment setup
 
@@ -39,11 +42,17 @@ A result file will be written under a path like `results_quickstart/results_gene
 
 | Goal | Command |
 | --- | --- |
-| Minimal smoke test | `uv run t2i-eval -f examples/run_basic.yaml -o results_basic` |
-| Config-file run | `uv run t2i-eval -f examples/run_multi.yaml -o results_multi` |
-| Geneval suite | `uv run t2i-eval -f examples/run_suite.yaml -o results_suite` |
-| SDXL baseline | `uv run t2i-eval -f examples/run_sdxl.yaml -o results_sdxl` |
-| Custom pipeline example | `uv run t2i-eval -f examples/run_zimage_turbo.yaml -o results_flux` |
+| Minimal smoke test | `uv run t2i-eval -f examples/geneval/run_basic.yaml -o results_basic` |
+| Config-file run | `uv run t2i-eval -f examples/geneval/run_multi.yaml -o results_multi` |
+| Geneval suite | `uv run t2i-eval -f examples/geneval/run_suite.yaml -o results_suite` |
+| GenAI-Bench one-sample smoke | `uv run t2i-eval -f examples/genaibench/run_genaibench_smoke.yaml` |
+| GenAI-Bench SD2.1 paper run | `uv run t2i-eval -f examples/genaibench/run_genaibench_sd21.yaml` |
+| GenAI-Bench SDXL paper run | `uv run t2i-eval -f examples/genaibench/run_genaibench_sdxl.yaml` |
+| ELLA SD1.5 paper run | `uv run t2i-eval -f examples/ella/run_ella_sd15.yaml` |
+| T2I-CoReBench Qwen-Image partial run | `uv run t2i-eval -f examples/t2i_corebench/run_t2i_corebench_qwen_image.yaml` |
+| T2I-CoReBench existing images | `uv run t2i-eval -f examples/t2i_corebench/run_t2i_corebench_existing_images.yaml` |
+| SDXL baseline | `uv run t2i-eval -f examples/geneval/run_sdxl.yaml -o results_sdxl` |
+| Custom pipeline example | `uv run t2i-eval -f examples/geneval/run_zimage_turbo.yaml -o results_flux` |
 
 Pick one or two rows that match your current goal, then come back to the next section to decode the parameters you just used.
 
@@ -85,37 +94,43 @@ Parameters used in this example:
 Command:
 
 ```bash
-uv run t2i-eval -f examples/run_multi.yaml -o results_multi
+uv run t2i-eval -f examples/geneval/run_multi.yaml -o results_multi
 ```
 
 Parameters used in this example:
 
 | Parameter | Meaning |
 | --- | --- |
-| `-f examples/run_multi.yaml` | Load model, generation, and evaluator settings from YAML. |
+| `-f examples/geneval/run_multi.yaml` | Load model, generation, and evaluator settings from YAML. |
 | `-o results_multi` | Override output directory for this run. |
 
 Related example files:
 
-- [examples/run_basic.yaml](examples/run_basic.yaml)
-- [examples/run_multi.yaml](examples/run_multi.yaml)
-- [examples/run_suite.yaml](examples/run_suite.yaml)
-- [examples/run_sdxl.yaml](examples/run_sdxl.yaml)
-- [examples/run_zimage_turbo.yaml](examples/run_zimage_turbo.yaml)
+- [examples/geneval/run_basic.yaml](examples/geneval/run_basic.yaml)
+- [examples/geneval/run_multi.yaml](examples/geneval/run_multi.yaml)
+- [examples/geneval/run_suite.yaml](examples/geneval/run_suite.yaml)
+- [examples/genaibench/run_genaibench_smoke.yaml](examples/genaibench/run_genaibench_smoke.yaml)
+- [examples/genaibench/run_genaibench_sd21.yaml](examples/genaibench/run_genaibench_sd21.yaml)
+- [examples/genaibench/run_genaibench_sdxl.yaml](examples/genaibench/run_genaibench_sdxl.yaml)
+- [examples/ella/run_ella_sd15.yaml](examples/ella/run_ella_sd15.yaml)
+- [examples/t2i_corebench/run_t2i_corebench_qwen_image.yaml](examples/t2i_corebench/run_t2i_corebench_qwen_image.yaml)
+- [examples/t2i_corebench/run_t2i_corebench_existing_images.yaml](examples/t2i_corebench/run_t2i_corebench_existing_images.yaml)
+- [examples/geneval/run_sdxl.yaml](examples/geneval/run_sdxl.yaml)
+- [examples/geneval/run_zimage_turbo.yaml](examples/geneval/run_zimage_turbo.yaml)
 
 ### 1.3 Example C: Geneval suite config
 
 Command:
 
 ```bash
-uv run t2i-eval -f examples/run_suite.yaml -o results_suite
+uv run t2i-eval -f examples/geneval/run_suite.yaml -o results_suite
 ```
 
 Parameters used in this example:
 
 | Parameter | Meaning |
 | --- | --- |
-| `-f examples/run_suite.yaml` | Load a geneval-focused suite config. |
+| `-f examples/geneval/run_suite.yaml` | Load a geneval-focused suite config. |
 | `-o results_suite` | Override output directory for this run. |
 
 ### 1.4 Example D: Custom pipeline (Z-Image Turbo)
@@ -143,7 +158,7 @@ Parameters used in this example:
 | `-g height=1024,width=1024` | Set output image size. |
 | `-E sample_dir=./samples` | Save generated samples for inspection. |
 
-Equivalent config-file example: [examples/run_zimage_turbo.yaml](examples/run_zimage_turbo.yaml)
+Equivalent config-file example: [examples/geneval/run_zimage_turbo.yaml](examples/geneval/run_zimage_turbo.yaml)
 
 ### 1.5 Example E: Accelerate multi-GPU launch
 
@@ -151,7 +166,7 @@ Command:
 
 ```bash
 uv run accelerate launch t2i-eval \
-  -f examples/run_multi.yaml \
+  -f examples/geneval/run_multi.yaml \
   -o results_accel \
   --fail-fast
 ```
@@ -161,7 +176,7 @@ Parameters used in this example:
 | Parameter | Meaning |
 | --- | --- |
 | `accelerate launch` | Run the same CLI through Accelerate for multi-process/multi-GPU setup. |
-| `-f examples/run_multi.yaml` | Use YAML as the evaluation plan. |
+| `-f examples/geneval/run_multi.yaml` | Use YAML as the evaluation plan. |
 | `-o results_accel` | Output directory. |
 | `--fail-fast` | Stop immediately when any evaluator fails. |
 
@@ -178,9 +193,10 @@ Once the examples feel familiar, this is where the project becomes configurable 
 - Generation parameters (`-g` / `-G`): [docs/parameters/generation.md](docs/parameters/generation.md)
 - Evaluator parameters:
   - Geneval: [docs/parameters/evaluators/geneval.md](docs/parameters/evaluators/geneval.md)
-  - Ella task spec: [docs/parameters/evaluators/ella.md](docs/parameters/evaluators/ella.md)
-  - GenAI-Bench task spec: [docs/parameters/evaluators/genaibench.md](docs/parameters/evaluators/genaibench.md)
-- Extend models or evaluators: [docs/extending.md](docs/extending.md)
+  - Ella: [docs/parameters/evaluators/ella.md](docs/parameters/evaluators/ella.md)
+  - GenAI-Bench: [docs/parameters/evaluators/genaibench.md](docs/parameters/evaluators/genaibench.md)
+  - T2I-CoReBench: [docs/parameters/evaluators/t2i_corebench.md](docs/parameters/evaluators/t2i_corebench.md)
+- Extend models or evaluators: [docs/guides/extending.md](docs/guides/extending.md)
 
 Tip: if you only need a quick tweak, jump directly to the evaluator page you are running and scan `-E` / `-G` fields first.
 
@@ -195,15 +211,16 @@ Tip: if you only need a quick tweak, jump directly to the evaluator page you are
 | Set evaluator-specific args | `-E key=value` or `-E name:key=value` | `evaluations.<name>.eval_args.<key>: value` | corresponding evaluator doc |
 | Set evaluator-specific generation overrides | `-G key=value` or `-G name:key=value` | `evaluations.<name>.gen_args.<key>: value` | [docs/parameters/generation.md](docs/parameters/generation.md) + evaluator doc |
 | Load a config file | `-f path/to/file.yaml` | N/A (this is a file-loading action) | examples in [examples/](examples/) |
-| Set output directory | `-o results_xxx` | `output.dir: results_xxx` (example in `run_suite.yaml`) | [examples/run_suite.yaml](examples/run_suite.yaml) |
+| Set output directory | `-o results_xxx` | `output.dir: results_xxx` (example in `run_suite.yaml`) | [examples/geneval/run_suite.yaml](examples/geneval/run_suite.yaml) |
 
 ### 2.3 Choose evaluator docs by `-e` key
 
 | evaluator key (`-e`) | Documentation |
 | --- | --- |
 | `geneval` | [docs/parameters/evaluators/geneval.md](docs/parameters/evaluators/geneval.md) |
-| `ella` | Task spec: [docs/parameters/evaluators/ella.md](docs/parameters/evaluators/ella.md) |
-| `genaibench` | Task spec: [docs/parameters/evaluators/genaibench.md](docs/parameters/evaluators/genaibench.md) |
+| `ella` | [docs/parameters/evaluators/ella.md](docs/parameters/evaluators/ella.md) |
+| `genaibench` | [docs/parameters/evaluators/genaibench.md](docs/parameters/evaluators/genaibench.md) |
+| `t2i_corebench` | [docs/parameters/evaluators/t2i_corebench.md](docs/parameters/evaluators/t2i_corebench.md) |
 
 ### 2.4 Precedence rules when values conflict
 
@@ -246,7 +263,7 @@ This table is intentionally compact. When you need accepted values or defaults, 
 | `-E, --eval-args` | Set evaluator args | [docs/parameters/evaluators/geneval.md](docs/parameters/evaluators/geneval.md), task specs for [Ella](docs/parameters/evaluators/ella.md) and [GenAI-Bench](docs/parameters/evaluators/genaibench.md) |
 | `-G, --eval-gen` | Override generation args per evaluator | [docs/parameters/generation.md](docs/parameters/generation.md) + evaluator docs |
 | `-f, --file` | Load YAML/JSON config | examples in [examples/](examples/) |
-| `-o, --output-dir` | Set output directory | [examples/run_suite.yaml](examples/run_suite.yaml) |
+| `-o, --output-dir` | Set output directory | [examples/geneval/run_suite.yaml](examples/geneval/run_suite.yaml) |
 | `--fail-fast` | Stop after first failure | Example E in this README |
 | `--no-summary` | Suppress per-evaluator stdout summary | `t2i-eval --help` |
 | `--quiet / --verbose` | Control log verbosity | `t2i-eval --help` |

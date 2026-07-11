@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from t2i_eval.core.benchmark import SampleEvaluation
 from t2i_eval.core.registry import get_evaluator_class
 from t2i_eval.core.schema import GenerationResult
 from t2i_eval.eval.ella.evaluator import (
@@ -21,6 +22,17 @@ class FakeScorer:
 
     def answer(self, image: Image.Image, question: str) -> str:
         return self.answers[question]
+
+
+def _evaluation(metadata: dict, image_count: int = 1) -> SampleEvaluation:
+    return SampleEvaluation(
+        sample_id=str(metadata.get("item_id", "sample")),
+        prompt=str(metadata.get("prompt", "")),
+        generation=GenerationResult(
+            images=[Image.new("RGB", (8, 8)) for _ in range(image_count)]
+        ),
+        metadata=metadata,
+    )
 
 
 def _question(
@@ -81,10 +93,9 @@ def test_postprocessor_keeps_raw_and_dependency_scores_separate():
         vqa_model_id="unused",
         scorer=scorer,
     )
-    generation_result = GenerationResult(images=[Image.new("RGB", (8, 8))])
     result = postprocessor(
-        [(generation_result, {"item_id": "one", "questions": questions})]
-    )[0][1]
+        [_evaluation({"item_id": "one", "questions": questions})]
+    )[0].metadata
 
     assert result["score"] == pytest.approx(1 / 3)
     child_metric = next(
@@ -116,8 +127,9 @@ def test_aggregator_matches_official_last_image_category_behavior():
         ],
     }
 
-    official = aggregate_ella_results([metadata], "official_last_image")
-    all_images = aggregate_ella_results([metadata], "all_images")
+    evaluation = _evaluation(metadata, image_count=2)
+    official = aggregate_ella_results([evaluation], "official_last_image")
+    all_images = aggregate_ella_results([evaluation], "all_images")
 
     assert official["score"] == 0.5
     assert official["task_scores"]["entity"] == 1.0
@@ -144,6 +156,6 @@ def test_csv_loader_groups_questions_and_keeps_first_data_row(tmp_path: Path):
     )
 
     assert len(records) == 1
-    generation_config, metadata = records[0]
-    assert generation_config.prompt == "a red cube"
-    assert [question["qid"] for question in metadata["questions"]] == [1, 2]
+    sample = records[0]
+    assert sample.generation_config.prompt == "a red cube"
+    assert [question["qid"] for question in sample.metadata["questions"]] == [1, 2]

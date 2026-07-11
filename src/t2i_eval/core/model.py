@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from accelerate import Accelerator
+from tqdm.auto import tqdm
 
 from .schema import GenerationConfig, GenerationResult
 
@@ -73,7 +74,13 @@ class BaseModel(ABC):
 
         # naive implementation, can be overridden by models that support batch generation
         results = []
-        for config in configs:
+        accelerator = getattr(self, "accelerator", None)
+        disable_progress = (
+            accelerator is not None and not accelerator.is_main_process
+        )
+        for config in tqdm(
+            configs, desc="Generating", unit="prompt", disable=disable_progress
+        ):
             result = self.generate(config)
             results.append(result)
         return results

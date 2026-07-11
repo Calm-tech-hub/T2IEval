@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from t2i_eval.core.schema import GenerationResult
+from t2i_eval.core.benchmark import SampleEvaluation
 
 
 def _detect_process_info() -> tuple[int, int]:
@@ -27,12 +27,12 @@ def _detect_process_info() -> tuple[int, int]:
 
 
 def save_results(
-    eval_results: list[tuple[GenerationResult, dict[str, Any]]],
+    eval_results: list[SampleEvaluation],
     sample_dir: str,
     process_index: int | None = None,
     num_processes: int | None = None,
     use_shared_index: bool = True,
-) -> list[tuple[GenerationResult, dict[str, Any]]]:
+) -> list[SampleEvaluation]:
     def default_serializer(obj: Any) -> Any:
         if hasattr(obj, "to_json"):
             return obj.to_json()
@@ -54,8 +54,13 @@ def save_results(
     output_dir = Path(sample_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for sample_idx, (generation_result, metadata) in enumerate(eval_results):
-        if use_shared_index and num_processes > 1:
+    for sample_idx, result in enumerate(eval_results):
+        generation_result = result.generation
+        metadata = result.metadata
+        explicit_index = metadata.get("_t2i_eval_sample_index")
+        if explicit_index is not None:
+            output_sample_idx = int(explicit_index)
+        elif use_shared_index and num_processes > 1:
             # Keep ids globally unique without rank subdirectories.
             output_sample_idx = sample_idx * num_processes + process_index
         else:
@@ -64,14 +69,20 @@ def save_results(
         sample_output_dir = output_dir / f"{output_sample_idx:06d}"
         sample_output_dir.mkdir(parents=True, exist_ok=True)
 
+        image_paths: list[str] = []
         for image_idx, image in enumerate(generation_result.images):
             image_path = sample_output_dir / f"{image_idx:02d}.png"
             image.save(image_path)
+            image_paths.append(str(image_path))
+        result.image_paths = image_paths
 
         metadata_path = sample_output_dir / "metadata.json"
         with metadata_path.open("w", encoding="utf-8") as file:
             json.dump(
                 metadata, file, indent=2, ensure_ascii=False, default=default_serializer
             )
+
+        complete_path = sample_output_dir / "complete.marker"
+        complete_path.write_text("complete\n", encoding="utf-8")
 
     return eval_results

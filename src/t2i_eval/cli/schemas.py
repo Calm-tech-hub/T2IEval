@@ -48,6 +48,9 @@ class OutputSpec:
     """Output directory information."""
 
     dir: str = "results"
+    save_images: bool = False
+    resume: bool = False
+    write_artifacts: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

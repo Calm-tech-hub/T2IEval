@@ -1,0 +1,36 @@
+# Score an existing official-style image directory without loading a T2I model.
+# Expected layout: <image_dir>/<dimension>/<prompt-id>-<sample-index>.png
+model: precomputed
+
+model_args:
+  device: cpu
+
+generation:
+  seed: 0
+  num_images_per_prompt: 4
+
+evaluations:
+  t2i_corebench:
+    eval_args:
+      data_dir: /root/autodl-tmp/exam/Benchmark_code/T2I-CoReBench/data
+      image_dir: /path/to/T2I-CoReBench-images/Qwen-Image
+      strict_images: true
+      dimensions:
+        - C-MI
+        - C-MR
+        - R-LR
+        - R-CR
+      num_prompts: null
+
+      judge_backend: qwen_subprocess
+      judge_model: /root/autodl-tmp/modelscope_cache/models/Qwen/Qwen3.5-9B
+      judge_python: /root/autodl-tmp/corebench-judge/.venv/bin/python
+      judge_cache_path: /root/autodl-tmp/exam/results_t2i_corebench_existing/judge_cache.jsonl
+      judge_batch_size: 64
+      judge_gpu_memory_utilization: 0.85
+
+output:
+  dir: /root/autodl-tmp/exam/results_t2i_corebench_existing
+  save_images: false
+  resume: false
+  write_artifacts: true

@@ -7,8 +7,9 @@ import open_clip
 import torch
 from pydantic import Field
 
+from ...core.benchmark import BenchmarkSample, SampleEvaluation
 from ...core.registry import register_evaluator
-from ...core.schema import GenerationConfig, GenerationResult
+from ...core.schema import GenerationConfig
 from .. import aggregator, processor
 from ..aggregator import Reduction
 from ..loader import load_hf_records
@@ -71,7 +72,7 @@ class GenevalGenerationConfig(GenerationConfig):
 def _geneval_row_to_eval_items(
     row: dict[str, Any],
     config: GenerationConfig,
-) -> list[tuple[GenerationConfig, dict[str, Any]]]:
+) -> list[BenchmarkSample]:
     category = row["category"]
     prompt = row["prompt"]
     metadata = row["metadata"]
@@ -82,7 +83,15 @@ def _geneval_row_to_eval_items(
         "metadata": metadata,
     }
 
-    return [(config, metadata)]
+    sample_id = str(row.get("id", row.get("prompt_id", prompt)))
+    return [
+        BenchmarkSample(
+            sample_id=sample_id,
+            prompt=prompt,
+            generation_config=config,
+            metadata=metadata,
+        )
+    ]
 
 
 class GenevalPostprocessor:
@@ -360,13 +369,15 @@ class GenevalPostprocessor:
         }
 
     def __call__(
-        self, eval_results: list[tuple[GenerationResult, dict[str, Any]]]
-    ) -> list[tuple[GenerationResult, dict[str, Any]]]:
+        self, eval_results: list[SampleEvaluation]
+    ) -> list[SampleEvaluation]:
         """Evaluate each generated image."""
         self._load_models()
 
         result = []
-        for gen_result, metadata in eval_results:
+        for item in eval_results:
+            gen_result = item.generation
+            metadata = item.metadata
             per_image_correct = []
             per_image_reason = []
 
@@ -388,7 +399,7 @@ class GenevalPostprocessor:
                 per_image_reason[0] if len(per_image_reason) == 1 else per_image_reason
             )
 
-            result.append((gen_result, metadata))
+            result.append(item)
 
         self._unload_models()
         return result

@@ -34,6 +34,21 @@ uv run t2i-eval -m diffusers \
 > - All `-a` values are parsed as strings; booleans use `true/false`.
 > - Any extra key not listed here will raise `extra fields not permitted` because `ModelConfig` uses `extra="forbid"`.
 
+## `precomputed`
+
+Loads images selected by a benchmark loader instead of running a generative
+model. This is useful for evaluating an existing image folder with exactly the
+same postprocessor and aggregator used after live generation.
+
+| Argument | Type | Required? | Description | Example |
+| --- | --- | --- | --- | --- |
+| `device` | str | ➖ (default `cuda`) | Bookkeeping device; use `cpu` because image loading needs no GPU | `device=cpu` |
+| `image_mode` | str | ➖ (default `RGB`) | Pillow conversion mode | `image_mode=RGB` |
+
+Image paths are supplied through `GenerationConfig.extra_kwargs` by a
+benchmark loader. For T2I-CoReBench, set `evaluations.t2i_corebench.eval_args.image_dir`
+and use the official `<dimension>/<prompt-id>-<sample-index>.png` layout.
+
 ## Adding new models
 
-See `docs/extending.md` for instructions on registering additional models. Once registered, document their arguments here.
+See `docs/guides/extending.md` for instructions on registering additional models. Once registered, document their arguments here.

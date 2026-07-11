@@ -1,0 +1,1513 @@
+% !TeX program = xelatex
+\documentclass[aspectratio=169,10pt]{beamer}
+
+% 中文与 LaTeX 风格字体
+\usepackage[UTF8]{ctex}
+\usepackage{fontspec}
+\setmainfont{Latin Modern Roman}
+\setsansfont{Latin Modern Sans}
+\setmonofont{Latin Modern Mono}
+% 中文字体交给 ctex 的 Fandol 字体集管理；不要按系统字体名重复指定。
+\usefonttheme{serif}
+
+% 表格、公式与矢量图
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% 保留原模板的学术主题，移除学校徽标与机构元素
+\usetheme{CambridgeUS}
+\usecolortheme{dolphin}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{caption}[numbered]
+
+% 白底 + 克制的论文配色
+\definecolor{T2INavy}{HTML}{203864}
+\definecolor{T2IBlue}{HTML}{4472C4}
+\definecolor{T2IGreen}{HTML}{2D7D5B}
+\definecolor{T2IAmber}{HTML}{B07421}
+\definecolor{T2IRed}{HTML}{AA4141}
+\definecolor{T2IPale}{HTML}{F4F7FB}
+\definecolor{T2ILine}{HTML}{DADFE6}
+\definecolor{T2IGray}{HTML}{68707A}
+
+\setbeamercolor{normal text}{fg=black!88,bg=white}
+\setbeamercolor{structure}{fg=T2INavy}
+\setbeamercolor{palette primary}{fg=white,bg=T2INavy}
+\setbeamercolor{palette secondary}{fg=white,bg=T2IBlue}
+\setbeamercolor{palette tertiary}{fg=white,bg=T2INavy}
+\setbeamercolor{author in head/foot}{fg=white,bg=T2INavy}
+\setbeamercolor{title in head/foot}{fg=white,bg=T2IBlue}
+\setbeamercolor{date in head/foot}{fg=white,bg=T2INavy}
+\setbeamercolor{frametitle}{fg=T2INavy,bg=white}
+\setbeamerfont{frametitle}{series=\bfseries,size=\Large}
+\setbeamercolor{title}{fg=T2INavy}
+\setbeamerfont{title}{series=\bfseries,size=\LARGE}
+\setbeamercolor{block title}{fg=white,bg=T2INavy}
+\setbeamercolor{block body}{fg=black!88,bg=T2IPale}
+\setbeamercolor{alerted text}{fg=T2IRed}
+\setbeamertemplate{blocks}[rounded][shadow=false]
+
+% 干净的页脚：项目名、当前章节、页码
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=.30\paperwidth,ht=2.7ex,dp=1.1ex,leftskip=1em]{author in head/foot}%
+      \color{white}\scriptsize T2IEval · 任务 A--E
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.58\paperwidth,ht=2.7ex,dp=1.1ex,center]{title in head/foot}%
+      \color{white}\scriptsize \insertsectionhead
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.12\paperwidth,ht=2.7ex,dp=1.1ex,center]{date in head/foot}%
+      \color{white}\scriptsize \insertframenumber/\inserttotalframenumber
+    \end{beamercolorbox}%
+  }%
+}
+
+% 常用组件
+\newcommand{\result}[1]{\textcolor{T2IBlue}{\bfseries #1}}
+\newcommand{\diff}[1]{\textcolor{T2IRed}{\bfseries #1}}
+\newcommand{\good}[1]{\textcolor{T2IGreen}{\bfseries #1}}
+\newcommand{\warn}[1]{\textcolor{T2IAmber}{\bfseries #1}}
+\newcommand{\source}[1]{%
+  \vfill\par\scriptsize\color{T2IGray}#1%
+}
+\newcommand{\metricbox}[3]{%
+  \begin{beamercolorbox}[wd=\linewidth,sep=0.8em,rounded=true]{block body}
+    \centering
+    {\scriptsize\color{T2IGray}#1}\par\vspace{0.25em}
+    {\Large\color{T2IBlue}\bfseries #2}\par\vspace{0.15em}
+    {\tiny\color{T2IGray}#3}
+  \end{beamercolorbox}%
+}
+
+% 首页信息：无校徽、无学校、无示例邮箱
+\title[T2IEval]{T2IEval：统一、可扩展的文生图评测框架}
+\subtitle{从指标复现到 ELLA、GenAI-Bench 与 T2I-CoReBench 的统一接入}
+\author{徐楷鸣}
+\institute{}
+\date{}
+
+\begin{document}
+
+% -----------------------------------------------------------------------------
+% 首页与项目背景
+% -----------------------------------------------------------------------------
+\begin{frame}[plain]
+  \titlepage
+\end{frame}
+
+\section{项目背景与任务}
+\begin{frame}{为什么需要统一的 T2I Evaluation Toolkit？}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.47\textwidth}
+      \begin{block}{现实问题}
+        \begin{itemize}\small
+          \item 不同 Benchmark 有各自的数据格式与 Prompt 组织。
+          \item 生图参数、评测模型和依赖环境不一致。
+          \item 官方脚本入口、图片目录与结果格式相互割裂。
+          \item 更换 T2I 模型时，往往要重复修改多套代码。
+        \end{itemize}
+      \end{block}
+    \column{0.06\textwidth}
+      \vspace{1.7cm}\centering\Large$\Longrightarrow$
+    \column{0.47\textwidth}
+      \begin{block}{T2IEval 的目标}
+        \begin{itemize}\small
+          \item 用一个 CLI / YAML 入口运行多个 Benchmark。
+          \item 将生成模型与评测逻辑解耦。
+          \item 统一读取、生成、评分、汇总和结果保存流程。
+          \item 让新增模型或 Benchmark 只实现必要的差异部分。
+        \end{itemize}
+      \end{block}
+  \end{columns}
+
+  \vspace{0.8em}
+  \begin{beamercolorbox}[sep=0.9em,rounded=true]{block body}
+    \centering
+    \textbf{核心价值：}降低重复配置成本，使跨模型、跨 Benchmark 的结果可以复现和对照。
+  \end{beamercolorbox}
+\end{frame}
+
+\begin{frame}{任务范围与汇报顺序}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      \begin{block}{A · 理解 GenEval}
+        \begin{minipage}[c][1.35cm][c]{\linewidth}
+          \centering\small 跑通参考实现，理解注册、生成、评分与汇总。
+        \end{minipage}
+      \end{block}
+    \column{0.31\textwidth}
+      \begin{block}{B · 接入 ELLA}
+        \begin{minipage}[c][1.35cm][c]{\linewidth}
+          \centering\small 在框架内实现数据读取、VQA 评分与依赖聚合。
+        \end{minipage}
+      \end{block}
+    \column{0.31\textwidth}
+      \begin{block}{C · 接入 GenAI}
+        \begin{minipage}[c][1.35cm][c]{\linewidth}
+          \centering\small 接入 CLIP-FlanT5 scorer，复现 SD2.1 / SDXL。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+
+  \vspace{0.35em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.47\textwidth}
+      \begin{block}{D · 通用接口}
+        \begin{minipage}[c][1.15cm][c]{\linewidth}
+          \centering\small 完善模型、Benchmark、自定义配置与结果接口。
+        \end{minipage}
+      \end{block}
+    \column{0.47\textwidth}
+      \begin{block}{E · 进阶扩展}
+        \begin{minipage}[c][1.15cm][c]{\linewidth}
+          \centering\small 接入 T2I-CoReBench，并以本地 Qwen MLLM 评测。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+
+  \vspace{0.45em}
+  \begin{beamercolorbox}[sep=0.65em,rounded=true]{block body}
+    \centering
+    \textbf{验证目标不是提高 Benchmark 分数，}\par
+    而是在对齐模型、配置和 scorer 后，复现与论文 / 官方代码接近的指标。
+  \end{beamercolorbox}
+\end{frame}
+
+\begin{frame}{T2IEval 整体代码框架}
+  \centering
+  \resizebox{0.95\textwidth}{!}{%
+  \begin{tikzpicture}[>=Latex,
+    box/.style={draw=T2ILine,fill=white,rounded corners=2pt,
+      minimum width=2.65cm,minimum height=0.88cm,align=center},
+    stage/.style={draw=T2IBlue,fill=T2IPale,rounded corners=2pt,
+      minimum width=2.20cm,minimum height=0.88cm,align=center},
+    note/.style={font=\scriptsize,text=T2IGray,align=center}]
+
+    % Layer 1: entry and scheduling
+    \node[note,anchor=west] at (-1.25,4.05) {\bfseries 1. 配置与调度};
+    \node[box] (cli) at (0,3.25) {\bfseries CLI / YAML\\[-2pt]
+      {\scriptsize\texttt{cli/main.py}}};
+    \node[box] (cfg) at (3.45,3.25) {\bfseries Config Loader\\[-2pt]
+      {\scriptsize defaults $<$ YAML $<$ CLI}};
+    \node[box] (run) at (6.90,3.25) {\bfseries Runner\\[-2pt]
+      {\scriptsize lifecycle + errors}};
+    \draw[->,T2IGray,thick] (cli)--(cfg);
+    \draw[->,T2IGray,thick] (cfg)--(run);
+
+    % Layer 2: select concrete model and evaluator classes
+    \node[note,anchor=west] at (-1.25,2.35) {\bfseries 2. 选择实现};
+    \node[box] (mreg) at (4.55,1.65) {\bfseries Model Registry\\[-2pt]
+      {\scriptsize\texttt{register\_model}}};
+    \node[box] (ereg) at (9.25,1.65) {\bfseries Evaluator Registry\\[-2pt]
+      {\scriptsize\texttt{register\_evaluator}}};
+    \node[box] (model) at (4.55,0.25) {\bfseries Model Adapter\\[-2pt]
+      {\scriptsize Diffusers / other T2I}};
+    \node[box] (eval) at (9.25,0.25) {\bfseries Evaluator Class\\[-2pt]
+      {\scriptsize GenEval / ELLA / GenAI}};
+    \draw[->,T2IGray,thick] (run.south) -- (mreg.north);
+    \draw[->,T2IGray,thick] (run.south) -- (ereg.north);
+    \draw[->,T2IGray,thick] (mreg)--(model);
+    \draw[->,T2IGray,thick] (ereg)--(eval);
+
+    % Layer 3: one evaluation's data flow
+    \draw[dashed,rounded corners=4pt,draw=T2IGray]
+      (-1.30,-3.05) rectangle (12.00,-0.65);
+    \node[note,anchor=west,fill=white,inner sep=2pt] at (-1.12,-0.65)
+      {\bfseries 3. \texttt{SimpleEvaluator.evaluate(model)} 数据流};
+
+    \node[stage] (load) at (0,-1.72) {\bfseries Loader\\[-2pt]
+      {\scriptsize raw $\to$ sample}};
+    \node[stage] (pre) at (2.70,-1.72) {\bfseries Preprocess\\[-2pt]
+      {\scriptsize filter / sample}};
+    \node[stage] (gen) at (5.40,-1.72) {\bfseries Generate\\[-2pt]
+      {\scriptsize model $\to$ images}};
+    \node[stage] (post) at (8.10,-1.72) {\bfseries Postprocess\\[-2pt]
+      {\scriptsize image $\to$ score}};
+    \node[stage] (agg) at (10.80,-1.72) {\bfseries Aggregate\\[-2pt]
+      {\scriptsize scores $\to$ metrics}};
+    \draw[->,T2IBlue,thick] (load)--(pre);
+    \draw[->,T2IBlue,thick] (pre)--(gen);
+    \draw[->,T2IBlue,thick] (gen)--(post);
+    \draw[->,T2IBlue,thick] (post)--(agg);
+    \node[note] at (5.40,-2.62) {\texttt{BenchmarkSample}
+      $\rightarrow$ \texttt{GenerationResult}
+      $\rightarrow$ \texttt{SampleEvaluation}
+      $\rightarrow$ \texttt{metrics}};
+
+    % Dependencies enter the execution box vertically, without crossing data-flow arrows.
+    \draw[->,T2IGray,dashed,thick] (model.south) -- (4.55,-0.48)
+      -| (gen.north);
+    \draw[->,T2IGray,dashed,thick] (eval.south) -- (9.25,-0.65);
+
+    % Output is outside evaluate(): Runner serializes the returned metrics.
+    \node[box] (writer) at (13.75,-1.72) {\bfseries Result Writer\\[-2pt]
+      {\scriptsize JSON / artifacts}};
+    \draw[->,T2IBlue,thick] (agg)--(writer);
+  \end{tikzpicture}}
+
+  \vspace{0.15em}
+  \small
+  \textbf{核心分工：}Runner 只负责调度；Model Adapter 只负责生图；Evaluator 将 Benchmark 特有组件装入统一执行骨架。
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% 任务 A
+% -----------------------------------------------------------------------------
+\section{任务 A：理解 GenEval}
+\begin{frame}{任务 A：目录结构、配置入口与数据加载}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{1. GenEval 目录结构}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \scriptsize
+          \texttt{eval/geneval/}
+          \begin{description}\scriptsize
+            \item[\texttt{\_\_init\_\_.py}] 导入 evaluator，触发注册
+            \item[\texttt{evaluator.py}] 配置类、row 转换、Postprocessor、Evaluator 装配
+            \item[\texttt{utils.py}] 图像裁剪、CLIP 颜色分类、IoU、相对位置
+          \end{description}
+          \vspace{0.15em}
+          \texttt{examples/geneval/}\par
+          \texttt{run\_geneval\_sd15.yaml}\par
+          \texttt{model/diffusers\_model.py}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \textbf{代码边界：}特有评分留在 GenEval 目录；生图复用公共 Diffusers Model。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{2. 配置如何进入 Evaluator}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{enumerate}\scriptsize
+            \item YAML 提供 SD1.5 路径、50 steps、CFG 9、seed 42、4 images / prompt。
+            \item Runner 合并全局 generation 与任务 override。
+            \item \texttt{GenevalEvaluator(**kwargs)} 构造 \texttt{GenevalConfig}。
+            \item 构造函数将 loader、可选 preprocess、Postprocessor 和两个 Aggregator 装入配置。
+          \end{enumerate}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\ttfamily
+          t2i-eval -e geneval\\
+          -f examples/geneval/\\
+          \quad run\_geneval\_sd15.yaml
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{3. 数据怎样加载和标准化}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{enumerate}\scriptsize
+            \item \texttt{load\_hf\_records} 读取 \texttt{Vertsineu/geneval} 的 validation split。
+            \item 反序列化 \texttt{metadata/include/exclude} 字段。
+            \item \texttt{\_geneval\_row\_to\_eval\_items} 将每行转换为 \texttt{BenchmarkSample}。
+          \end{enumerate}
+          \scriptsize\ttfamily
+          sample\_id / prompt\\
+          generation\_config\\
+          metadata = \{category, prompt,\\
+          \qquad include/exclude rules\}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\rmfamily
+          \textbf{全量模式：}不做 preprocess；仅设置 \texttt{category} 或 \texttt{num\_samples} 时筛选 / 抽样。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 A：生成流程、评测流程与结果汇总}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{4. 生成流程}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{enumerate}\scriptsize
+            \item \texttt{\_generate} 读取样本内的 \texttt{GenerationConfig}。
+            \item \texttt{DiffusersModel.generate} 将统一字段映射为 SD Pipeline 参数。
+            \item 每个 Prompt 生成 4 张图，generator 使用 seed 42--45。
+            \item 返回 \texttt{GenerationResult(images, latency)}。
+            \item 随后 \texttt{model.unload()} 释放 SD1.5 显存，再加载评测模型。
+          \end{enumerate}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{显存切换：}先卸载生成模型，再加载 Mask2Former 与 CLIP。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{5. 评测流程}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{enumerate}\scriptsize
+            \item Mask2Former 预测实例 mask、类别和置信度；普通阈值 0.3，Counting 阈值 0.9。
+            \item mask 转 bbox，并统一检测器与 GenEval 的类别名称。
+            \item 对照 metadata 检查 include / exclude 中的对象与数量。
+            \item 颜色由 OpenCLIP 分类；位置由 bbox 中心与尺寸判断。
+          \end{enumerate}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize
+          每张图输出 \texttt{correct + reason}；每个 Prompt 的 \texttt{correct} 为 4 张图正确率均值。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{6. 结果怎样汇总}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \scriptsize
+          \[
+            S_k=\operatorname{mean}_{i:c_i=k}(correct_i)
+          \]
+          \[
+            Overall=\frac{1}{6}\sum_{k=1}^{6}S_k
+          \]
+          \begin{itemize}\scriptsize
+            \item Aggregator 1 输出六类 \texttt{task\_scores}。
+            \item Aggregator 2 对六类等权平均，输出 \texttt{score}。
+            \item 使用 \texttt{correct}，不是 \texttt{prompt\_correct=any(...)}。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\ttfamily
+          results\_geneval\_diffusers.json\\
+          task\_scores / score / error
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 A：GenEval 指标复现}
+  \begin{table}
+    \centering\scriptsize
+    \setlength{\tabcolsep}{6.5pt}
+    \renewcommand{\arraystretch}{1.35}
+    \begin{tabular}{lccccccc}
+      \toprule
+      & Overall & Single object & Two object & Counting & Colors & Position & Attr. binding \\
+      \midrule
+      论文 SD1.5 & 0.43 & 0.97 & 0.38 & 0.35 & 0.76 & 0.04 & 0.06 \\
+      本项目复现 & \result{0.4208} & \result{0.9938} & \result{0.3535} & \result{0.3500} & \result{0.7500} & \result{0.0175} & \result{0.0600} \\
+      相对误差 & \diff{$-2.14\%$} & \diff{$+2.45\%$} & \diff{$-6.97\%$} & \diff{$0.00\%$} & \diff{$-1.32\%$} & \diff{$-56.25\%$} & \diff{$0.00\%$} \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{1.0em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+      \begin{block}{复现配置}
+        \centering\small
+        SD1.5 \quad $|$ \quad 50 steps \quad $|$ \quad CFG 9.0\\[0.35em]
+        4 images / prompt \quad $|$ \quad seed 42
+      \end{block}
+    \column{0.48\textwidth}
+      \begin{block}{结果判断}
+        \centering\small
+        本项目各项指标与论文报告\textbf{基本一致}，完成 GenEval 指标复现。
+      \end{block}
+  \end{columns}
+  \source{结果文件：\texttt{results\_geneval\_sd15\_paper/results\_geneval\_diffusers.json}}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% 任务 B
+% -----------------------------------------------------------------------------
+\section{任务 B：接入 ELLA}
+\begin{frame}{任务 B：ELLA 的实现思路与设计取舍}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{1. 先识别可复用的稳定骨架}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item CLI / YAML、Registry 与 Runner 已经解决“如何启动一次评测”。
+            \item \texttt{BenchmarkSample} 已经能表达 Prompt、生成参数与 metadata。
+            \item \texttt{SimpleEvaluator} 已经固定 load--generate--postprocess--aggregate 生命周期。
+            \item Diffusers Model 已经能够完成 SD1.5 生图和显存释放。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{为什么复用：}这些能力与 Benchmark 评分语义无关，重复实现只会产生多套入口和结果格式。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{2. 再定位 ELLA 的必要差异}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 一个 Prompt 对应多条 Yes/No 问题，而不是一组对象检测规则。
+            \item 每个问题带父子依赖，原始 VQA 正确不代表依赖修正后有效。
+            \item 评分模型是 ModelScope mPLUG，不属于生成模型接口。
+            \item Overall 与论文分类统计使用不同的汇总范围。
+            \item 官方数据还需要 CSV 分组和离线 Parquet 读取。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{为什么新增：}这些是 ELLA 的评分定义，无法由 GenEval 的检测 Postprocessor 表达。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{3. 将差异放到正确的扩展点}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \textbf{Loader：}HF / Parquet / CSV $\to$ 标准样本。
+            \item \textbf{Scorer：}\texttt{VQAScorer} Protocol 隔离 mPLUG，可替换、可测试。
+            \item \textbf{Postprocessor：}逐图问答与 dependency 传播。
+            \item \textbf{Aggregator：}Overall、五类与二级类别统计。
+            \item \textbf{Policies：}显式配置缺失依赖和 last-image 行为。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{最终结构：}公共框架保持不变，只向 \texttt{eval/ella/} 增加 ELLA 特有实现。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 B：ELLA 的框架内实现细节}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{1. 新增模块及职责}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \texttt{\_\_init\_\_.py}：导出 \texttt{EllaEvaluator}，触发框架注册。
+            \item \texttt{loader.py}：HF Dataset 加载与本地 Parquet fallback。
+            \item \texttt{evaluator.py}：配置、CSV 分组、Postprocessor、聚合与注册。
+            \item \texttt{scorer.py}：mPLUG adapter 与问题依赖传播。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{实现方式：}所有必要代码合入 \texttt{eval/ella/}，不是外部独立脚本。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{2. 复用了哪些公共组件}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \textbf{执行骨架：}\texttt{SimpleEvaluator}。
+            \item \textbf{标准样本：}\texttt{BenchmarkSample / SampleEvaluation}。
+            \item \textbf{生成与抽样：}\texttt{DiffusersModel / processor.sample}。
+            \item \textbf{运行入口：}Runner、Registry、CLI / YAML。
+            \item \textbf{结果命名：}\texttt{results\_ella\_diffusers.json}。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{复用边界：}公共框架负责运行；ELLA 目录只实现数据、VQA、依赖和聚合差异。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{3. Evaluator 如何装配}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \texttt{@register\_evaluator("ella")} 注册统一入口。
+            \item \texttt{EllaConfig(**kwargs)} 校验数据、VQA 与聚合参数。
+            \item loader 绑定 \texttt{load\_ella\_records}。
+            \item 设置 \texttt{num\_samples} 时加入随机抽样 preprocessor。
+            \item Postprocessor 绑定 \texttt{EllaPostprocessor}。
+            \item Aggregator 绑定 \texttt{aggregate\_ella\_results}。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\ttfamily
+          t2i-eval -e ella\\
+          -f examples/ella/run\_ella\_sd15.yaml
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 B：数据读取、Prompt 组织与参数配置}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{4. 数据读取}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 默认读取 \texttt{Vertsineu/ella} 的 validation split。
+            \item \texttt{datasets} 可用时直接读取，并反序列化 \texttt{questions}。
+            \item 离线模式失败时，从 HF snapshot 查找 \texttt{validation.parquet}，用 pandas 读取。
+            \item 也支持 \texttt{csv\_path}；CSV 按 \texttt{item\_id} 分组，把多行问题还原为一个样本。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{输出：}每个数据项转换为一个 \texttt{BenchmarkSample}。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{5. Prompt 与问题组织}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \scriptsize
+          原始 \texttt{prompt/text} 直接作为生图 Prompt；同一 \texttt{item\_id} 下的问题保存在 metadata：
+          \begin{itemize}\scriptsize
+            \item \textbf{qid：}问题 / proposition 编号。
+            \item \textbf{question：}自然语言 Yes/No 问题。
+            \item \textbf{dependency：}父问题编号列表。
+            \item \textbf{category：}broad + detailed 两级类别。
+            \item \textbf{tuple：}官方语义元组文本。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{关键：}Prompt 用于生图；questions 用于逐图核查 Prompt 中的细粒度命题。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{6. 参数配置入口}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \textbf{数据：}\texttt{dataset / split / csv / subset}。
+            \item \textbf{生成：}SD1.5，$512^2$，50 steps，CFG 12，seed 42，4 images。
+            \item \textbf{VQA：}本地 mPLUG COCO large EN。
+            \item \textbf{依赖策略：}\texttt{zero}。
+            \item \textbf{分类策略：}\texttt{official\_last\_image}。
+            \item \textbf{输出：}\texttt{output.dir}。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{覆盖方式：}YAML 为默认配置，CLI 可覆盖任务参数与输出路径。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 B：生成、评测逻辑与结果保存}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{7. 生成设置与流程}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item Loader 为每个样本复制 \texttt{EllaGenerationConfig} 并写入 Prompt。
+            \item 公共 Diffusers Model 使用 SD1.5 生成 $512\times512$ 图片。
+            \item 50 steps、CFG 12、seed 42，每个 Prompt 生成 4 张图。
+            \item 生图完成后卸载 SD1.5，再加载 mPLUG VQA，避免同时占用显存。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize 全量运行：1,065 Prompts $\rightarrow$ 4,260 images。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{8. VQA 与依赖评测}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 对每张图逐一询问该 Prompt 的全部问题。
+            \item mPLUG 输出标准化为小写；仅 \texttt{"yes"} 记 1，其余记 0。
+            \item 按问题顺序传播 dependency：父问题为 0，则子问题调整为 0。
+            \item 缺失父问题默认按 \texttt{zero} 处理，同时记录引用错误。
+            \item 保存 raw score、dependency score、valid 和两级类别。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize 每张图分数 = 依赖修正后问题分数的平均值。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{9. 聚合与结果保存}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \textbf{Overall：}先平均每张图的依赖修正分数，再平均 4 张图和全部 Prompt。
+            \item \textbf{五类指标：}兼容官方 \texttt{official\_last\_image} 行为，取最后一张图的 raw score，按 broad / detailed 类别统计。
+            \item 保存 prompts、images、question evaluations、缺失依赖数和统计策略。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\ttfamily
+          results\_ella\_diffusers.json\\
+          score / task\_scores / category\_scores\_l2
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 B：ELLA 指标复现}
+  \begin{table}
+    \centering\scriptsize
+    \setlength{\tabcolsep}{8pt}
+    \renewcommand{\arraystretch}{1.35}
+    \begin{tabular}{lcccccc}
+      \toprule
+      & Overall & Global & Entity & Attribute & Relation & Other \\
+      \midrule
+      论文 SD1.5 & 63.18 & 74.63 & 74.23 & 75.39 & 73.49 & 67.81 \\
+      本项目复现 & \result{63.68} & \result{79.03} & \result{72.21} & \result{72.93} & \result{79.64} & \result{52.40} \\
+      相对误差 & \diff{$+0.79\%$} & \diff{$+5.90\%$} & \diff{$-2.72\%$} & \diff{$-3.26\%$} & \diff{$+8.37\%$} & \diff{$-22.73\%$} \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{1.0em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+      \begin{block}{复现配置}
+        \centering\small
+        SD1.5，$512^2$ \quad $|$ \quad 50 steps \quad $|$ \quad CFG 12.0\\[0.35em]
+        4 images / prompt \quad $|$ \quad seed 42
+      \end{block}
+    \column{0.48\textwidth}
+      \begin{block}{结果判断}
+        \centering\small
+        Overall 与论文报告\textbf{基本一致}；分类差异主要来自官方分类聚合策略。
+      \end{block}
+  \end{columns}
+  \source{结果文件：\texttt{results\_ella\_sd15/results\_ella\_diffusers.json}}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% 任务 C
+% -----------------------------------------------------------------------------
+\section{任务 C：接入 GenAI-Bench}
+\begin{frame}{任务 C：GenAI-Bench 的实现思路}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{1. 继续复用稳定骨架}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item CLI、YAML、Registry、Runner 不感知具体 Benchmark。
+            \item \texttt{BenchmarkSample} 足以保存 Prompt 和 skills 标签。
+            \item Diffusers Model 可通过 YAML 切换 SD2.1 与 SDXL。
+            \item \texttt{SimpleEvaluator} 已提供生成、卸载模型、后处理和聚合生命周期。
+            \item Runner 继续负责统一结果命名与错误保存。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{为什么复用：}换 Benchmark 不应重新实现模型加载、CLI 和运行管理。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{2. 找出 GenAI-Bench 的差异}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 数据不是问题依赖图，而是 Prompt 加多个 skills 标签。
+            \item 评分不是 Yes/No 正确率，而是图文对的连续 VQAScore。
+            \item 论文复现指定 \texttt{clip-flant5-xxl} 与 \texttt{t2v-metrics==1.1}。
+            \item 同一 Prompt 分数需要同时计入 basic / advanced 和细分 skill。
+            \item Scorer 接口接收图片路径，需要适配 PIL 图片和批量调用。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{为什么新增：}这些数据语义和打分方法不能由 GenEval 或 ELLA 的 Postprocessor 表达。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{3. 对应到四个扩展点}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \textbf{Loader：}Prompt + skills $\to$ 标准样本。
+            \item \textbf{Scorer：}PIL 图片 $\to$ 临时路径 $\to$ CLIP-FlanT5 分数。
+            \item \textbf{Postprocessor：}展平 image--prompt pairs，批量评分后恢复归属。
+            \item \textbf{Aggregator：}按 skills 分组，并独立计算 Overall。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{设计结果：}新增代码只位于 \texttt{eval/genaibench/}，核心 Runner 与 CLI 无专用分支。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 C：框架内代码实现细节}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{4. 新增模块及职责}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \texttt{\_\_init\_\_.py}：导出 \texttt{GenAIBenchEvaluator}。
+            \item \texttt{loader.py}：HF Dataset 与本地多 Parquet fallback。
+            \item \texttt{scorer.py}：Scorer Protocol、CLIP-FlanT5 adapter 与资源释放。
+            \item \texttt{evaluator.py}：配置、row 转换、Postprocessor、聚合和注册。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize 所有 Benchmark 特有逻辑都收敛在 \texttt{eval/genaibench/}。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{5. Scorer Adapter 的处理}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 启动时严格检查 \texttt{t2v-metrics==1.1}。
+            \item 只导入所需 \texttt{clip\_t5\_model} 子模块，避免无关可选后端影响加载。
+            \item 将 PIL 图片写入临时 PNG，因为官方 scorer 接收路径。
+            \item 按 \texttt{score\_batch\_size} 调用 \texttt{CLIPT5Model.forward}。
+            \item Tensor 转为有限 float 列表，完成后释放 scorer 与 CUDA cache。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize Adapter 隔离了第三方库接口，Evaluator 只依赖 \texttt{score\_pairs}。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{6. Evaluator 如何装配}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 注册键为 \texttt{genaibench}。
+            \item 配置仅接受 \texttt{image\_1600 / image\_527}，并验证 batch size。
+            \item loader 绑定数据集、config、split 与 row converter。
+            \item 可选 \texttt{num\_samples} 使用公共抽样器。
+            \item Postprocessor 绑定 CLIP-FlanT5 scorer。
+            \item 两个公共 list aggregator 分别输出 \texttt{task\_scores} 和 \texttt{score}。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\ttfamily
+          t2i-eval -e genaibench\\
+          -f examples/genaibench/\\
+          \quad run\_genaibench\_sd21.yaml
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 C：数据读取、Prompt 组织与参数配置}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{7. 数据读取}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 数据源：\texttt{Vertsineu/geneaibench}。
+            \item 论文全量配置：\texttt{image\_1600}，split 为 \texttt{test\_v1}。
+            \item \texttt{datasets} 读取时反序列化 \texttt{skills}。
+            \item 离线时在 snapshot 中查找 config 对应的全部 split Parquet，并用 pandas 合并。
+            \item 支持 \texttt{num\_samples} 构造 smoke subset。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize 全量运行得到 1,600 个标准样本。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{8. Prompt 与 skills 组织}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \scriptsize
+          每一行直接转换为一个 \texttt{BenchmarkSample}：
+          \begin{itemize}\scriptsize
+            \item \textbf{sample\_id：}\texttt{prompt\_id}，缺失时使用 index。
+            \item \textbf{prompt：}英文 Prompt，同时写入 GenerationConfig。
+            \item \textbf{prompt\_zh：}中文对照，仅保存在 metadata。
+            \item \textbf{skills：}一个 Prompt 可有多个标签，例如 attribute + basic。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\textbf{关键：}同一个英文 Prompt 同时用于生图和 VQAScore；skills 只决定分数进入哪些类别。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{9. 参数配置入口}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \textbf{数据：}\texttt{dataset / config / split / subset}。
+            \item \textbf{Scorer：}\texttt{clip-flant5-xxl}，v1.1，batch 16。
+            \item \textbf{模板：}可选 question / answer template。
+            \item \textbf{SD2.1：}$768^2$，50 steps，CFG 9，seed 42。
+            \item \textbf{SDXL：}$1024^2$，50 steps，CFG 9，seed 42。
+            \item \textbf{输出：}\texttt{output.dir}。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize SD2.1 / SDXL 只切换 Model 与 generation；Evaluator 和 scorer 保持一致。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 C：生成、评测逻辑与结果保存}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.30\textwidth}
+      \begin{block}{10. 生成流程}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item Loader 将英文 Prompt 写入每个样本的 GenerationConfig。
+            \item SD2.1 使用 StableDiffusionPipeline，生成 $768\times768$ 图片。
+            \item SDXL 使用基础模型 Pipeline，生成 $1024\times1024$ 图片。
+            \item 两组实验均为 50 steps、CFG 9、seed 42、1 image / prompt。
+            \item 生成完卸载 T2I 模型，再加载大型 CLIP-FlanT5 scorer。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize 生成模型变化不会修改 GenAI-Bench evaluator。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{11. VQAScore 评测}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 展平所有图片和对应英文 Prompt，并记录 owner index。
+            \item 临时保存 PNG，按 batch 16 输入 CLIP-FlanT5。
+            \item scorer 返回每个 image--prompt pair 的连续 VQAScore。
+            \item 按 owner 恢复到原样本；多图时取平均得到 Prompt score。
+            \item 为每个 skills 标签写一条 \texttt{skill\_metrics}，并额外加入 \texttt{all}。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize 本次每个 Prompt 只有一张图，因此 Prompt score 等于该图 VQAScore。
+        \end{minipage}
+      \end{block}
+
+    \column{0.035\textwidth}
+    \column{0.30\textwidth}
+      \begin{block}{12. 聚合与结果保存}
+        \begin{minipage}[c][5.05cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \texttt{aggregate\_metric\_from\_list} 按 skill 分组平均，生成全部 \texttt{task\_scores}。
+            \item Basic / Advanced 和 10 个细分能力均来自同一套 skill 标签。
+            \item Overall 对有 skills 的 Prompt score 直接取平均。
+            \item Runner 保存模型、generation config、完整分类指标和 error。
+          \end{itemize}
+          \vspace{0.45em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.3em}
+          \scriptsize\ttfamily
+          results\_genaibench\_diffusers.json\\
+          task\_scores / score
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 C：SD2.1 全部分类指标复现}
+  \begin{table}
+    \centering\scriptsize
+    \setlength{\tabcolsep}{8pt}
+    \renewcommand{\arraystretch}{1.25}
+    \begin{tabular}{lccc}
+      \toprule
+      & Basic & Advanced & Overall \\
+      \midrule
+      论文 SD2.1 & 0.750000 & 0.600000 & 0.670000 \\
+      本项目复现 & \result{0.752781} & \result{0.599709} & \result{0.669723} \\
+      相对误差 & \diff{$+0.37\%$} & \diff{$-0.05\%$} & \diff{$-0.04\%$} \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{0.45em}
+  \begin{table}
+    \centering\tiny
+    \setlength{\tabcolsep}{3.2pt}
+    \renewcommand{\arraystretch}{1.25}
+    \begin{tabular}{lcccccccccc}
+      \toprule
+      & Attribute & Scene & Spatial & Action & Part & Counting & Comparison & Differ. & Negation & Universal \\
+      \midrule
+      本项目复现 & \result{0.7551} & \result{0.7726} & \result{0.7333} & \result{0.7283} & \result{0.7041} & \result{0.6671} & \result{0.6787} & \result{0.6540} & \result{0.5225} & \result{0.6395} \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{0.55em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+      \begin{block}{复现配置}
+        \centering\small
+        SD2.1，$768^2$ \quad $|$ \quad 50 steps \quad $|$ \quad CFG 9.0\\[0.35em]
+        seed 42 \quad $|$ \quad clip-flant5-xxl
+      \end{block}
+    \column{0.48\textwidth}
+      \begin{block}{结果判断}
+        \centering\small
+        Overall 与论文报告\textbf{基本一致}，完成 SD2.1 指标复现。
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 C：SDXL 全部分类指标复现}
+  \begin{table}
+    \centering\scriptsize
+    \setlength{\tabcolsep}{8pt}
+    \renewcommand{\arraystretch}{1.25}
+    \begin{tabular}{lccc}
+      \toprule
+      & Basic & Advanced & Overall \\
+      \midrule
+      论文 SDXL & 0.8200 & 0.6300 & 0.7200 \\
+      本项目复现 & \result{0.8260} & \result{0.6375} & \result{0.7237} \\
+      相对误差 & \diff{$+0.73\%$} & \diff{$+1.19\%$} & \diff{$+0.51\%$} \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{0.45em}
+  \begin{table}
+    \centering\tiny
+    \setlength{\tabcolsep}{3.2pt}
+    \renewcommand{\arraystretch}{1.25}
+    \begin{tabular}{lcccccccccc}
+      \toprule
+      & Attribute & Scene & Spatial & Action & Part & Counting & Comparison & Differ. & Negation & Universal \\
+      \midrule
+      本项目复现 & \result{0.8371} & \result{0.8511} & \result{0.8118} & \result{0.8142} & \result{0.8180} & \result{0.7285} & \result{0.7044} & \result{0.6963} & \result{0.5151} & \result{0.6682} \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \vspace{0.55em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+      \begin{block}{复现配置}
+        \centering\small
+        SDXL-base-1.0，$1024^2$ \quad $|$ \quad 50 steps \quad $|$ \quad CFG 9.0\\[0.35em]
+        seed 42 \quad $|$ \quad clip-flant5-xxl
+      \end{block}
+    \column{0.48\textwidth}
+      \begin{block}{结果判断}
+        \centering\small
+        Overall 与论文报告\textbf{基本一致}，完成 SDXL 指标复现。
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 A--C：复现结果总览}
+  \vfill
+  \begin{table}
+    \centering
+    \renewcommand{\arraystretch}{1.35}
+    \setlength{\tabcolsep}{8pt}
+    \begin{tabular}{llrrr}
+      \toprule
+      Benchmark & 测试模型 & 论文参考 & 本项目复现 & 相对误差 \\
+      \midrule
+      GenEval & SD1.5 & 0.43 & \result{0.4208} & \diff{$-2.14\%$} \\
+      ELLA / DPG-Bench & SD1.5 & 63.18 & \result{63.68} & \diff{$+0.79\%$} \\
+      GenAI-Bench & SD2.1 & 0.6700 & \result{0.669723} & \diff{$-0.04\%$} \\
+      GenAI-Bench & SDXL & 0.7200 & \result{0.7237} & \diff{$+0.51\%$} \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+  \vfill
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% 任务 D
+% -----------------------------------------------------------------------------
+\section{任务 D：完善通用接口}
+\begin{frame}{任务 D：A--C 接入后，真正需要解决什么？}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      \begin{block}{问题 1：数据靠位置约定}
+        \begin{minipage}[c][4.65cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 原流程在阶段间传递 \texttt{(GenerationConfig, metadata)} tuple。
+            \item Prompt、样本编号、图片和分数没有统一的命名字段。
+            \item ELLA 的 questions / dependency 与 GenAI 的 skills 都继续塞入 metadata。
+          \end{itemize}
+          \vspace{0.35em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.25em}
+          \scriptsize\textbf{后果：}新增 Benchmark 时容易依赖 tuple 位置和隐式字段，阶段边界难检查。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{问题 2：模型差异向外泄漏}
+        \begin{minipage}[c][4.65cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 原 adapter 固定传一组 Diffusers 参数，并假设输出一定有 \texttt{.images}。
+            \item SD、SDXL 还能共用；新 Pipeline 可能不接受相同参数。
+            \item 模型特有参数若加入公共 Schema，会不断扩大核心接口。
+          \end{itemize}
+          \vspace{0.35em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.25em}
+          \scriptsize\textbf{后果：}接入新模型可能反过来修改 evaluator 或公共 GenerationConfig。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{问题 3：一次运行难以复查}
+        \begin{minipage}[c][4.65cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 输出重点是最终 JSON，逐样本依据和运行环境没有形成稳定目录。
+            \item YAML 与 CLI 都能给参数，但覆盖顺序和作用域不够清楚。
+            \item 失败后只能看到短错误，难判断是数据、生成还是评分阶段。
+          \end{itemize}
+          \vspace{0.35em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.25em}
+          \scriptsize\textbf{后果：}同一个分数难以回答“由哪套配置和哪些样本得到”。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 D：统一各阶段传递的样本格式}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.46\textwidth}
+      \begin{block}{修改前：阶段之间传匿名 tuple}
+        \begin{minipage}[c][4.25cm][c]{\linewidth}
+          \centering\small
+          \texttt{(GenerationConfig, metadata)}
+          \vspace{0.55em}
+          \begin{itemize}\scriptsize
+            \item Loader 决定 tuple 中放什么。
+            \item SimpleEvaluator 生成后再用 \texttt{zip} 拼回 metadata。
+            \item Postprocessor / Aggregator 只能约定某个 key 在 metadata 中存在。
+          \end{itemize}
+          \vspace{0.35em}
+          \scriptsize\color{T2IRed}问题：接口“能传”，但不能说明每个字段的职责。
+        \end{minipage}
+      \end{block}
+    \column{0.06\textwidth}
+      \vspace{2.55cm}\centering\Large$\Longrightarrow$
+    \column{0.46\textwidth}
+      \begin{block}{修改后：两个有名字的对象贯穿流程}
+        \begin{minipage}[c][4.25cm][c]{\linewidth}
+          \scriptsize
+          \textbf{生成前：}\texttt{BenchmarkSample}
+          \begin{itemize}\scriptsize
+            \item \texttt{sample\_id / prompt / generation\_config}
+            \item \texttt{metadata / references}
+          \end{itemize}
+          \textbf{生成后：}\texttt{SampleEvaluation}
+          \begin{itemize}\scriptsize
+            \item \texttt{generation / image\_paths / scores}
+            \item \texttt{metadata / error}
+          \end{itemize}
+          \vspace{0.2em}
+          \scriptsize\color{T2IBlue}结果：Loader、评分和聚合共享同一份样本身份。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+
+  \vspace{0.45em}
+  \begin{beamercolorbox}[sep=0.65em,rounded=true]{block body}
+    \centering\small
+    \texttt{SimpleEvaluator} 只编排 load $\rightarrow$ preprocess $\rightarrow$ generate $\rightarrow$ postprocess $\rightarrow$ aggregate；新增 Benchmark 只实现各阶段的差异。
+  \end{beamercolorbox}
+\end{frame}
+
+\begin{frame}{任务 D：把模型差异收回 Adapter 内部}
+  \begin{table}
+    \centering\scriptsize
+    \renewcommand{\arraystretch}{1.3}
+    \begin{tabularx}{\textwidth}{p{2.1cm}X X}
+      \toprule
+      实际差异 & 原实现风险 & Adapter 中的处理 \\
+      \midrule
+      调用参数不同 & 所有 Pipeline 都收到固定参数，新增参数又要修改公共 Schema & 公共参数保持严格；模型专用值放入 \texttt{extra\_kwargs} \\
+      支持参数不同 & Pipeline 不接受某个参数时，到运行阶段才报错 & 读取 \texttt{pipeline.\_\_call\_\_} 签名，只保留其支持的参数 \\
+      输出形状不同 & 直接访问 \texttt{output.images}，Adapter 假设过强 & 统一归一化 \texttt{.images}、dict、list 和 tuple 输出 \\
+      执行能力不同 & 所有模型被迫采用同一种批处理实现 & \texttt{BaseModel.generate} 为最小契约；模型可覆盖 \texttt{generate\_batch} \\
+      \bottomrule
+    \end{tabularx}
+  \end{table}
+
+  \vspace{0.55em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+      \begin{block}{Evaluator 只依赖稳定部分}
+        \centering\small
+        \texttt{GenerationConfig} $\rightarrow$ \texttt{BaseModel.generate}\par
+        \vspace{0.35em}
+        \texttt{GenerationResult(images, debug\_info)}
+      \end{block}
+    \column{0.48\textwidth}
+      \begin{block}{YAML 表达模型差异}
+        \centering\small
+        checkpoint / pipeline / dtype\par
+        \vspace{0.35em}
+        scheduler / LoRA / \texttt{extra\_kwargs}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 D：让一次运行可以被解释和复查}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.47\textwidth}
+      \begin{block}{配置问题如何解决？}
+        \begin{minipage}[c][4.65cm][c]{\linewidth}
+          \centering\small
+          defaults $\rightarrow$ YAML $\rightarrow$ CLI override
+          \vspace{0.55em}
+          \begin{itemize}\scriptsize
+            \item \texttt{model\_args}：模型路径、Pipeline、dtype。
+            \item \texttt{generation}：尺寸、steps、CFG、seed。
+            \item \texttt{eval\_args}：数据路径、scorer 与聚合策略。
+            \item \texttt{output}：目录、图片保存、resume、结构化产物。
+          \end{itemize}
+          \vspace{0.35em}
+          \scriptsize\textbf{收益：}同一 Runner 不需要识别 ELLA 或 GenAI-Bench 的专有字段。
+        \end{minipage}
+      \end{block}
+    \column{0.05\textwidth}
+    \column{0.48\textwidth}
+      \begin{block}{结果问题如何解决？}
+        \begin{minipage}[c][4.65cm][c]{\linewidth}
+          \scriptsize\ttfamily
+          runs/<config-fingerprint>/\\
+          \quad config.json\\
+          \quad environment.json\\
+          \quad metrics.json\\
+          \quad samples.jsonl\\
+          \quad errors.jsonl / complete.marker\\
+          \quad images/
+          \vspace{0.55em}
+
+          \rmfamily\scriptsize
+          配置指纹隔离不同实验；逐样本记录连接 Prompt、图片和分数；环境文件记录依赖、GPU 与 commit。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+
+  \vspace{0.4em}
+  \begin{beamercolorbox}[sep=0.6em,rounded=true]{block body}
+    \centering\scriptsize
+    兼容策略：继续输出 \texttt{results\_<benchmark>\_<model>.json}，同时新增 run artifacts；已有命令和验收文件不失效。
+  \end{beamercolorbox}
+\end{frame}
+
+\begin{frame}{任务 D：验证重构是否成立}
+  \begin{table}
+    \centering\scriptsize
+    \renewcommand{\arraystretch}{1.35}
+    \begin{tabularx}{\textwidth}{p{2.25cm}X X}
+      \toprule
+      验证层次 & 要防止的问题 & 本项目证据 \\
+      \midrule
+      数据与注册 & 新对象转换时丢 Prompt、skills、questions 或类别 & Loader / row converter / evaluator registration 测试 \\
+      评分语义 & 公共流程改造后改变 dependency、last-image 或 skill 聚合 & ELLA 依赖传播、GenAI scorer batching 与聚合单元测试 \\
+      真实运行 & 测试替身可通过，但模型、scorer 或落盘链路不能工作 & smoke 验证生成、卸载模型、评分和保存的完整生命周期 \\
+      论文复现 & 工程重构没有报错，但最终统计口径发生漂移 & 固定 checkpoint 与生成参数，保留分类指标并对照官方 report \\
+      \bottomrule
+    \end{tabularx}
+  \end{table}
+
+  \vspace{0.55em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      \begin{block}{自动测试}
+        \centering\small
+        \result{12 passed}\par\scriptsize
+        ELLA + GenAI 核心语义
+      \end{block}
+    \column{0.31\textwidth}
+      \begin{block}{规模核对}
+        \centering\small
+        \result{1,065 / 1,600}\par\scriptsize
+        ELLA / GenAI Prompts
+      \end{block}
+    \column{0.31\textwidth}
+      \begin{block}{验收标准}
+        \centering\small
+        \textbf{接近论文}\par\scriptsize
+        A--C 四组 Overall
+      \end{block}
+  \end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% 任务 E
+% -----------------------------------------------------------------------------
+\section{任务 E：接入 T2I-CoReBench}
+\begin{frame}{任务 E：从官方独立脚本到框架内 Evaluator}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      \begin{block}{1. 先拆解官方流程}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 12 个 JSON 分别描述 4 个 Composition 与 8 个 Reasoning 维度。
+            \item \texttt{sample.py} 单独生图，并按 model / dimension 保存 PNG。
+            \item \texttt{evaluate.py} 读取图片，对每条 checklist 做 Yes/No 问答。
+            \item 每张图取有效问题均值，再得到各维度 \texttt{mean\_score}。
+          \end{itemize}
+          \vspace{0.35em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.25em}
+          \scriptsize\textbf{保留：}官方数据、问题模板、二值解析和逐图评分定义。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{2. 再确定接入边界}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 生图和评分不再由两个外部脚本分别启动。
+            \item Loader 把官方记录转换为 \texttt{BenchmarkSample}。
+            \item Postprocessor 把图片展开为 image--question 请求。
+            \item Aggregator 输出维度、Composition、Reasoning 与 overall。
+            \item 通过 \texttt{@register\_evaluator} 接入统一 CLI。
+          \end{itemize}
+          \vspace{0.35em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.25em}
+          \scriptsize\textbf{目标：}不是包装官方命令，而是成为 T2IEval 内部 evaluator。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{3. 选择本地评测方案}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 主论文 evaluator 是 Gemini 2.5 Flash，需要外部 API。
+            \item 当前官方仓库已加入 Qwen3.5，并给出对应评测结果。
+            \item 本项目选择 Qwen3.5-9B：单卡可部署，且属于官方支持分支。
+            \item vLLM 放在独立环境，避免与主项目生成/scorer 依赖冲突。
+          \end{itemize}
+          \vspace{0.35em}
+          \color{T2IGray}\rule{\linewidth}{0.35pt}\par\vspace{0.25em}
+          \scriptsize\textbf{生成模型：}使用 Qwen-Image 验证新模型接入能力。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 E：框架内代码如何实现？}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      \begin{block}{新增 evaluator 模块}
+        \begin{minipage}[c][5.0cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \texttt{\_\_init\_\_.py}：导出并触发 evaluator 注册。
+            \item \texttt{loader.py}：解析 12 维官方 JSON、选择维度和限制 Prompt 数。
+            \item \texttt{evaluator.py}：配置、Postprocessor、聚合器与两种运行模式。
+            \item \texttt{scorer.py}：Judge Protocol、缓存键、子进程调用和二值解析。
+            \item \texttt{qwen\_worker.py}：隔离加载 vLLM / Qwen3.5 并批量推理。
+          \end{itemize}
+          \vspace{0.3em}
+          \scriptsize\ttfamily src/t2i\_eval/eval/t2i\_corebench/
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{补充通用能力}
+        \begin{minipage}[c][5.0cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \texttt{PrecomputedImageModel}：把已有图片包装为标准生成结果。
+            \item \texttt{extra\_kwargs}：传递 Qwen-Image 的 \texttt{true\_cfg\_scale}。
+            \item 样本级 \texttt{complete.marker}：长时间生图可断点续跑。
+            \item \texttt{ArtifactWriter}：统一保存样本、问题、配置、环境和指标。
+            \item 两份 YAML：直接生成与读取已有图片。
+          \end{itemize}
+          \vspace{0.3em}
+          \scriptsize\textbf{原因：}这些能力不只服务 CoReBench，其他 evaluator 也可复用。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{Evaluator 装配过程}
+        \begin{minipage}[c][5.0cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 注册名称 \texttt{t2i\_corebench}，由 Registry 提供统一入口。
+            \item \texttt{T2ICoreBenchConfig} 校验维度、数据、图片与 Judge 参数。
+            \item \texttt{run\_mode=generate\_only} 时只生图和保存。
+            \item 正常模式装配本地 Qwen Postprocessor。
+            \item 最后绑定 \texttt{aggregate\_corebench\_results}。
+          \end{itemize}
+          \vspace{0.4em}
+          \tiny\ttfamily
+          t2i-eval -e t2i\_corebench\\
+          -f examples/\\
+          run\_t2i\_corebench\_qwen\_image.yaml
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 E：数据读取、样本组织与参数配置}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      \begin{block}{数据读取}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 支持本地官方 \texttt{data/*.json}，也可从 HF Dataset snapshot 读取。
+            \item 12 个维度名称在 Loader 中集中校验，拒绝未知维度。
+            \item 每条记录读取 ID、Prompt、Checklist、Main Class、Sub Class 和 Remark。
+            \item \texttt{dimensions / num\_prompts} 支持完整、部分维度和小规模实验。
+          \end{itemize}
+          \vspace{0.35em}
+          \scriptsize\textbf{输出：}所有来源统一转换为 \texttt{BenchmarkSample}。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{Prompt 与 Checklist 组织}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 原始 \texttt{Prompt} 直接用于 T2I 生成，不做改写。
+            \item Checklist 保存在 metadata，每项保留 question 与 tags。
+            \item 每条 Prompt 按图片数展开为独立 sample，建立稳定 \texttt{sample\_id}。
+            \item seed 随图片索引递增，使 resume 后仍能定位同一生成请求。
+          \end{itemize}
+          \vspace{0.35em}
+          \scriptsize\textbf{评分单位：}一张图中的每个 checklist question。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{当前扩展实验配置}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 生成模型：本地 Qwen-Image，bfloat16。
+            \item 生成参数：$1328^2$，50 steps，True CFG 4.0，seed 0。
+            \item 维度：C-MI、C-MR、R-LR、R-CR，各 90 条 Prompt。
+            \item 资源折中：每条 Prompt 1 张，共 360 张图片。
+            \item Judge：本地 Qwen3.5-9B，vLLM batch 64。
+          \end{itemize}
+          \vspace{0.35em}
+          \scriptsize\textbf{状态：}结果仍在运行，本页只记录实验范围，不报告分数。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 E：生成、读取已有图片与本地评分}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      \begin{block}{路径 A：框架内批量生成}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item Loader 产生 Qwen-Image 的标准生成配置。
+            \item 公共 Diffusers adapter 逐样本生成并立即落盘。
+            \item 每个样本写入图片、metadata 和完成标记。
+            \item 全部图片完成后卸载 Qwen-Image，释放显存再加载 Judge。
+          \end{itemize}
+          \vspace{0.35em}
+          \scriptsize\textbf{支持：}批量运行、进度显示、样本级 resume。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{路径 B：读取已有图片}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item \texttt{image\_dir} 指向 model-level 图片目录。
+            \item Loader 按 \texttt{dimension/prompt-id-index.png} 查找图片。
+            \item \texttt{strict\_images=true} 拒绝数量不足的 Prompt 组。
+            \item \texttt{PrecomputedImageModel} 将文件读取为 \texttt{GenerationResult}。
+            \item 后续评分和聚合与现场生成完全共用。
+          \end{itemize}
+          \vspace{0.35em}
+          \scriptsize\textbf{意义：}官方图片或其他 T2I 模型结果无需重新生成。
+        \end{minipage}
+      \end{block}
+    \column{0.035\textwidth}
+    \column{0.31\textwidth}
+      \begin{block}{统一的评分与输出}
+        \begin{minipage}[c][4.95cm][c]{\linewidth}
+          \begin{itemize}\scriptsize
+            \item 每个 image--question 构造独立请求，Qwen 仅返回 yes / no。
+            \item 无法解析的回答记为 invalid，并单独统计有效回答率。
+            \item question $\rightarrow$ image $\rightarrow$ dimension $\rightarrow$ Composition / Reasoning / overall。
+            \item 输出 \texttt{metrics.json / samples.jsonl / questions.jsonl} 与图片、配置、环境、缓存。
+          \end{itemize}
+          \vspace{0.35em}
+          \scriptsize\textbf{部分评测：}\texttt{is\_partial\_evaluation=true}，避免误当完整榜单分数。
+        \end{minipage}
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 E：哪些组件复用，哪些必须新增？}
+  \begin{table}
+    \centering\scriptsize
+    \renewcommand{\arraystretch}{1.32}
+    \begin{tabularx}{\textwidth}{p{2.35cm}X X}
+      \toprule
+      能力 & 直接复用 & CoReBench 新增部分 \\
+      \midrule
+      启动与配置 & CLI、YAML、Registry、Runner & 注册名与 \texttt{T2ICoreBenchConfig} \\
+      数据与生命周期 & \texttt{BenchmarkSample}、\texttt{SimpleEvaluator} & 12 维 JSON Loader、图片展开规则 \\
+      图片来源 & \texttt{DiffusersModel}、统一 GenerationResult & Qwen-Image YAML；通用 \texttt{PrecomputedImageModel} \\
+      单样本评分 & Postprocessor 接口、模型卸载与图片路径 & Checklist 请求构造、Qwen Judge adapter、二值解析 \\
+      汇总与保存 & ArtifactWriter、samples / config / environment & 维度、Composition / Reasoning、valid / cached rate、questions \\
+      \bottomrule
+    \end{tabularx}
+  \end{table}
+
+  \vspace{0.7em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+      \begin{block}{为什么复用？}
+        \centering\small
+        启动、生图、样本身份和结果落盘与评分语义无关，不应再实现一套。
+      \end{block}
+    \column{0.48\textwidth}
+      \begin{block}{为什么新增？}
+        \centering\small
+        12 维数据、Checklist、Judge Prompt 和聚合层级属于 Benchmark 定义。
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{任务 E：与官方评测的差异及本地结果局限}
+  \begin{table}
+    \centering\scriptsize
+    \renewcommand{\arraystretch}{1.28}
+    \begin{tabularx}{\textwidth}{p{2.0cm}X X}
+      \toprule
+      对比项 & 官方方式 & 本项目本地方式 \\
+      \midrule
+      Judge & 主论文使用 Gemini 2.5 Flash；当前仓库也支持 Qwen 系列 & 使用官方支持的 Qwen3.5-9B，本地 vLLM 子进程，无外部 API \\
+      Prompt / 解析 & 官方 system template，temperature 0，Yes/No，多轮重试 & 移植同一 template、二值规则、temperature 0、repetition penalty 与重试策略 \\
+      执行入口 & \texttt{sample.py} 与 \texttt{evaluate.py} 分开运行 & 一个 evaluator 支持现场生成、generate-only 和已有图片评测 \\
+      输出口径 & 每个模型、每个维度各写一个 JSON / mean score & 统一保存问题、图片、维度及 Composition / Reasoning / overall \\
+      随机与规模 & 默认 12 维、4 images / Prompt，进程级随机状态 & 当前 4 维、1 image / Prompt；显式逐图 seed，便于 resume \\
+      \bottomrule
+    \end{tabularx}
+  \end{table}
+
+  \vspace{0.45em}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      \begin{block}{Judge 局限}
+        \centering\scriptsize
+        Qwen 与 Gemini 对小物体、文字、否定和复杂关系可能给出不同判断。
+      \end{block}
+    \column{0.31\textwidth}
+      \begin{block}{采样局限}
+        \centering\scriptsize
+        单图无法估计四图方差；部分维度 overall 不能与完整榜单直接比较。
+      \end{block}
+    \column{0.31\textwidth}
+      \begin{block}{环境局限}
+        \centering\scriptsize
+        Qwen / vLLM 版本、精度、invalid rate 和生成 seed 都会影响最终结果。
+      \end{block}
+  \end{columns}
+\end{frame}
+
+% -----------------------------------------------------------------------------
+% 项目复盘
+% -----------------------------------------------------------------------------
+\section{项目复盘}
+\begin{frame}[plain]
+  \begin{center}
+    \vspace{1.0cm}
+    {\Huge\color{T2INavy}\bfseries Q \& A}
+
+    \vspace{1.2cm}
+    {\Large 感谢聆听}
+  \end{center}
+\end{frame}
+
+\end{document}

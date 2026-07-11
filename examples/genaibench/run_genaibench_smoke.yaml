@@ -1,0 +1,34 @@
+model: diffusers
+
+model_args:
+  pretrained: stable-diffusion-v1-5/stable-diffusion-v1-5
+  dtype: float16
+  disable_safety_checker: true
+  enable_attention_slicing: true
+  show_denoising_progress: false
+
+# This configuration validates the full framework path with one inexpensive
+# generation. It is not a paper-comparable benchmark run.
+generation:
+  steps: 2
+  guidance_scale: 7.5
+  seed: 42
+  width: 512
+  height: 512
+  num_images_per_prompt: 1
+
+evaluations:
+  genaibench:
+    eval_args:
+      dataset_name: Vertsineu/geneaibench
+      dataset_config_name: image_1600
+      split: test_v1
+      num_samples: 1
+      scorer_model: clip-flant5-xxl
+      scorer_version: "1.1"
+      scorer_cache_dir: /root/autodl-tmp/hf_cache/hub
+      score_batch_size: 1
+      sample_dir: /root/autodl-tmp/exam/samples_genaibench_smoke
+
+output:
+  dir: /root/autodl-tmp/exam/results_genaibench_smoke

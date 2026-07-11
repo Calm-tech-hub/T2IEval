@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import Field
+from tqdm.auto import tqdm
 
+from ...core.benchmark import BenchmarkSample, SampleEvaluation
 from ...core.registry import register_evaluator
-from ...core.schema import GenerationConfig, GenerationResult
+from ...core.schema import GenerationConfig
 from .. import processor
 from ..simple_evaluator import SimpleEvalConfig, SimpleEvaluator
 from .loader import load_ella_hf_records
@@ -107,7 +109,7 @@ def _normalize_question(question: dict[str, Any]) -> dict[str, Any]:
 def _ella_row_to_eval_items(
     row: dict[str, Any],
     config: GenerationConfig,
-) -> list[tuple[GenerationConfig, dict[str, Any]]]:
+) -> list[BenchmarkSample]:
     prompt = str(row.get("prompt", row.get("text", ""))).strip()
     if not prompt:
         raise ValueError(f"ELLA row has no prompt: {row!r}")
@@ -124,13 +126,21 @@ def _ella_row_to_eval_items(
         "prompt": prompt,
         "questions": questions,
     }
-    return [(generation_config, metadata)]
+    sample_id = metadata["item_id"] or prompt
+    return [
+        BenchmarkSample(
+            sample_id=sample_id,
+            prompt=prompt,
+            generation_config=generation_config,
+            metadata=metadata,
+        )
+    ]
 
 
 def _load_csv_records(
     csv_path: str,
     default_config: GenerationConfig,
-) -> list[tuple[GenerationConfig, dict[str, Any]]]:
+) -> list[BenchmarkSample]:
     path = Path(csv_path)
     if not path.is_file():
         raise FileNotFoundError(f"ELLA CSV not found: {path}")
@@ -151,7 +161,7 @@ def _load_csv_records(
             )
             record["questions"].append(_normalize_question(row))
 
-    result: list[tuple[GenerationConfig, dict[str, Any]]] = []
+    result: list[BenchmarkSample] = []
     for record in grouped.values():
         result.extend(_ella_row_to_eval_items(record, default_config))
     return result
@@ -162,7 +172,7 @@ def load_ella_records(
     split: str,
     default_config: GenerationConfig,
     csv_path: str | None = None,
-) -> list[tuple[GenerationConfig, dict[str, Any]]]:
+) -> list[BenchmarkSample]:
     if csv_path is not None:
         return _load_csv_records(csv_path, default_config)
 
@@ -208,13 +218,17 @@ class EllaPostprocessor:
             self.scorer = None
 
     def __call__(
-        self, eval_results: list[tuple[GenerationResult, dict[str, Any]]]
-    ) -> list[tuple[GenerationResult, dict[str, Any]]]:
+        self, eval_results: list[SampleEvaluation]
+    ) -> list[SampleEvaluation]:
         scorer = self._load_scorer()
-        processed: list[tuple[GenerationResult, dict[str, Any]]] = []
+        processed: list[SampleEvaluation] = []
 
         try:
-            for generation_result, metadata in eval_results:
+            for item in tqdm(
+                eval_results, desc="Evaluating ELLA", unit="prompt"
+            ):
+                generation_result = item.generation
+                metadata = item.metadata
                 questions = metadata["questions"]
                 image_scores: list[float] = []
                 question_metrics: list[dict[str, Any]] = []
@@ -265,7 +279,7 @@ class EllaPostprocessor:
                 )
                 metadata["question_metrics"] = question_metrics
                 metadata["missing_dependencies"] = missing_dependencies
-                processed.append((generation_result, metadata))
+                processed.append(item)
         finally:
             self._unload_scorer()
 
@@ -277,7 +291,7 @@ def _mean(values: list[float]) -> float:
 
 
 def aggregate_ella_results(
-    metadatas: list[dict[str, Any]],
+    results: list[SampleEvaluation],
     category_image_policy: str = "official_last_image",
 ) -> dict[str, Any]:
     if category_image_policy not in {"official_last_image", "all_images"}:
@@ -285,6 +299,7 @@ def aggregate_ella_results(
             "category_image_policy must be official_last_image or all_images"
         )
 
+    metadatas = [result.metadata for result in results]
     prompt_scores = [float(metadata.get("score", 0.0)) for metadata in metadatas]
     category_values: dict[str, list[float]] = defaultdict(list)
     detailed_values: dict[str, list[float]] = defaultdict(list)
