@@ -1,292 +1,434 @@
-# T2IEval
+# T2IEval 运行说明
 
-Run text-to-image evaluation with a single command.
+T2IEval 是一个统一的文生图评测框架。本仓库已经接入：
 
-| [Quick Start](#0-first-contact) | [Examples](#1-reading-the-examples) | [Parameter Docs](#21-documentation-map) | [CLI Reference](#3-cli-quick-reference) | [Extending](docs/guides/extending.md) |
-| --- | --- | --- | --- | --- |
+- `geneval`：使用 Mask2Former 和 CLIP 判断对象、数量、颜色、位置等能力；
+- `ella`：使用 DPG-Bench 数据和本地 mPLUG VQA 评测 Prompt 遵循能力；
+- `genaibench`：使用 CLIP-FlanT5 VQAScore 评测文本—图像对齐；
+- `t2i_corebench`：读取 T2I-CoReBench checklist，使用本地 Qwen3.5-9B 多模态模型评分。
 
-If this is your first visit, run one short command first and keep scrolling. The rest of the page gradually shifts from runnable snippets to customization details, so the abstract parts stay grounded in something you have already executed.
-
----
-
-## 0. First Contact
-
-T2IEval is designed for quick iteration: run something small, confirm it works, then scale.
-In this exam implementation, `geneval` is the provided reference evaluator and both
-`genaibench` and `ella` are integrated behind the same CLI and result schema.
-The optional `t2i_corebench` evaluator demonstrates the same interfaces on a
-12-dimension composition-and-reasoning benchmark with a local Qwen judge.
-
-### 0.1 Environment setup
+四个 Benchmark 共用同一个 CLI、模型接口和结果保存格式：
 
 ```bash
-unzip T2IEval-test.zip
-cd T2IEval-test
-uv sync
+t2i-eval -e <benchmark> -f <config.yaml>
 ```
 
-### 0.2 A quick first pass
+> 仓库中的正式 YAML 按当前实验服务器编写，包含 `/root/autodl-tmp/...` 绝对路径。换机器运行前，必须修改模型、数据、Judge Python 和输出目录。
+
+## 1. 环境安装
+
+### 1.1 基础要求
+
+- Linux；
+- Python 3.13；
+- NVIDIA GPU 和可用的 CUDA 驱动；
+- `uv` 包管理器；
+- 足够的磁盘空间存放生成模型、评分模型和结果图片。
+
+安装 `uv`（已经安装时跳过）：
 
 ```bash
-uv run t2i-eval \
-  -m diffusers \
-  -a pretrained=runwayml/stable-diffusion-v1-5,dtype=float16,disable_safety_checker=true \
-  -g steps=20,seed=42 \
-  -e geneval -E num_samples=16 \
-  -o results_quickstart
+pip install -U uv
 ```
 
-A result file will be written under a path like `results_quickstart/results_geneval_diffusers.json`.
+### 1.2 安装主环境
 
-### 0.3 A few ready-made runs
+```bash
+cd /root/autodl-tmp/exam/T2IEval-test
 
-| Goal | Command |
+uv sync --frozen
+```
+
+`--frozen` 表示严格使用仓库中的 `uv.lock`，避免依赖版本在复现过程中发生变化。
+
+检查环境：
+
+```bash
+uv run --no-sync python -c '
+import torch, transformers, diffusers
+print("torch:", torch.__version__)
+print("transformers:", transformers.__version__)
+print("diffusers:", diffusers.__version__)
+print("cuda available:", torch.cuda.is_available())
+'
+
+uv run --no-sync t2i-eval --help
+```
+
+当前锁定环境已经验证的关键版本包括：
+
+```text
+Python       3.13
+PyTorch      2.9.1 + CUDA 12.8
+Transformers 4.57.3
+t2v-metrics  1.1
+```
+
+### 1.3 配置缓存目录
+
+建议将模型缓存放在项目目录之外，避免模型权重进入 Git 仓库：
+
+```bash
+export HF_HOME=/root/autodl-tmp/hf_cache
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_HUB_DISABLE_XET=1
+export MODELSCOPE_CACHE=/root/autodl-tmp/modelscope_cache
+```
+
+可以将上述内容写入 `~/.bashrc`，以后重新登录无需重复设置：
+
+```bash
+cat >> ~/.bashrc <<'EOF'
+export HF_HOME=/root/autodl-tmp/hf_cache
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_HUB_DISABLE_XET=1
+export MODELSCOPE_CACHE=/root/autodl-tmp/modelscope_cache
+EOF
+
+source ~/.bashrc
+```
+
+## 2. 模型与数据准备
+
+### 2.1 Hugging Face 登录
+
+公开模型不需要登录。SDXL 等受限模型需要先在 Hugging Face 网页接受协议，然后执行：
+
+```bash
+uv run --no-sync hf auth login
+```
+
+登录状态检查：
+
+```bash
+uv run --no-sync hf auth whoami
+```
+
+### 2.2 生成模型
+
+按实际评测任务下载需要的模型，不必一次下载全部模型：
+
+```bash
+# GenEval / ELLA：Stable Diffusion 1.5
+uv run --no-sync hf download \
+  stable-diffusion-v1-5/stable-diffusion-v1-5
+
+# GenAI-Bench：Stable Diffusion 2.1 768
+uv run --no-sync hf download \
+  sd2-community/stable-diffusion-2-1
+
+# GenAI-Bench：SDXL
+uv run --no-sync hf download \
+  stabilityai/stable-diffusion-xl-base-1.0
+```
+
+Qwen-Image 使用 ModelScope 下载到 YAML 中配置的本地目录：
+
+```bash
+mkdir -p /root/autodl-tmp/modelscope_cache/models/Qwen
+
+uv run --no-sync modelscope download \
+  --model Qwen/Qwen-Image \
+  --local_dir /root/autodl-tmp/modelscope_cache/models/Qwen/Qwen-Image
+```
+
+### 2.3 Benchmark 评分模型
+
+GenEval 使用 Mask2Former。正式 YAML 设置了 `detector_local_files_only: true`，因此必须提前下载：
+
+```bash
+uv run --no-sync hf download \
+  facebook/mask2former-swin-small-coco-instance
+```
+
+ELLA 使用 ModelScope mPLUG VQA：
+
+```bash
+mkdir -p /root/autodl-tmp/modelscope_cache/damo
+
+uv run --no-sync modelscope download \
+  --model damo/mplug_visual-question-answering_coco_large_en \
+  --local_dir /root/autodl-tmp/modelscope_cache/damo/mplug_visual-question-answering_coco_large_en
+```
+
+GenAI-Bench 使用 `clip-flant5-xxl`，并会同时使用 CLIP vision tower：
+
+```bash
+uv run --no-sync hf download \
+  zhiqiulin/clip-flant5-xxl
+
+uv run --no-sync hf download \
+  openai/clip-vit-large-patch14-336
+```
+
+T2I-CoReBench 的本地 Judge：
+
+```bash
+uv run --no-sync modelscope download \
+  --model Qwen/Qwen3.5-9B \
+  --local_dir /root/autodl-tmp/modelscope_cache/models/Qwen/Qwen3.5-9B
+```
+
+### 2.4 Benchmark 数据
+
+GenEval、ELLA 和 GenAI-Bench 默认从 Hugging Face Dataset 自动读取：
+
+| Benchmark | 数据集 |
 | --- | --- |
-| Minimal smoke test | `uv run t2i-eval -f examples/geneval/run_basic.yaml -o results_basic` |
-| Config-file run | `uv run t2i-eval -f examples/geneval/run_multi.yaml -o results_multi` |
-| Geneval suite | `uv run t2i-eval -f examples/geneval/run_suite.yaml -o results_suite` |
-| GenAI-Bench one-sample smoke | `uv run t2i-eval -f examples/genaibench/run_genaibench_smoke.yaml` |
-| GenAI-Bench SD2.1 paper run | `uv run t2i-eval -f examples/genaibench/run_genaibench_sd21.yaml` |
-| GenAI-Bench SDXL paper run | `uv run t2i-eval -f examples/genaibench/run_genaibench_sdxl.yaml` |
-| ELLA SD1.5 paper run | `uv run t2i-eval -f examples/ella/run_ella_sd15.yaml` |
-| T2I-CoReBench Qwen-Image partial run | `uv run t2i-eval -f examples/t2i_corebench/run_t2i_corebench_qwen_image.yaml` |
-| T2I-CoReBench existing images | `uv run t2i-eval -f examples/t2i_corebench/run_t2i_corebench_existing_images.yaml` |
-| SDXL baseline | `uv run t2i-eval -f examples/geneval/run_sdxl.yaml -o results_sdxl` |
-| Custom pipeline example | `uv run t2i-eval -f examples/geneval/run_zimage_turbo.yaml -o results_flux` |
+| GenEval | `Vertsineu/geneval` |
+| ELLA | `Vertsineu/ella` |
+| GenAI-Bench | `Vertsineu/geneaibench` |
 
-Pick one or two rows that match your current goal, then come back to the next section to decode the parameters you just used.
-
----
-
-## 1. Reading the Examples
-
-With one or two runs completed, the command lines become much easier to read. The notes below focus on what each parameter changes.
-
-### 1.1 Example A: Single Geneval run
-
-Command:
+需要提前缓存时执行：
 
 ```bash
-uv run t2i-eval \
-  -m diffusers \
-  -a pretrained=runwayml/stable-diffusion-v1-5,dtype=float16,disable_safety_checker=true \
-  -g steps=20,seed=42 \
-  -e geneval -E num_samples=16 \
-  -o results_quickstart
+uv run --no-sync hf download --repo-type dataset Vertsineu/geneval
+uv run --no-sync hf download --repo-type dataset Vertsineu/ella
+uv run --no-sync hf download --repo-type dataset Vertsineu/geneaibench
 ```
 
-Parameters used in this example:
-
-| Parameter | Meaning |
-| --- | --- |
-| `-m diffusers` | Use the Diffusers model backend. |
-| `-a pretrained=...` | Choose which pretrained model to load. |
-| `-a dtype=float16` | Set model precision to FP16. |
-| `-a disable_safety_checker=true` | Disable safety checker in the pipeline. |
-| `-g steps=20` | Set diffusion sampling steps. |
-| `-g seed=42` | Fix RNG seed for reproducibility. |
-| `-e geneval` | Add the `geneval` evaluator. |
-| `-E num_samples=16` | Evaluate up to 16 prompts/samples for this evaluator. |
-| `-o results_quickstart` | Write outputs to this directory. |
-
-### 1.2 Example B: Config-file run
-
-Command:
+T2I-CoReBench 使用官方仓库中的 12 个维度 JSON：
 
 ```bash
-uv run t2i-eval -f examples/geneval/run_multi.yaml -o results_multi
+mkdir -p /root/autodl-tmp/exam/Benchmark_code
+
+git clone https://github.com/KwaiVGI/T2I-CoReBench.git \
+  /root/autodl-tmp/exam/Benchmark_code/T2I-CoReBench
 ```
 
-Parameters used in this example:
-
-| Parameter | Meaning |
-| --- | --- |
-| `-f examples/geneval/run_multi.yaml` | Load model, generation, and evaluator settings from YAML. |
-| `-o results_multi` | Override output directory for this run. |
-
-Related example files:
-
-- [examples/geneval/run_basic.yaml](examples/geneval/run_basic.yaml)
-- [examples/geneval/run_multi.yaml](examples/geneval/run_multi.yaml)
-- [examples/geneval/run_suite.yaml](examples/geneval/run_suite.yaml)
-- [examples/genaibench/run_genaibench_smoke.yaml](examples/genaibench/run_genaibench_smoke.yaml)
-- [examples/genaibench/run_genaibench_sd21.yaml](examples/genaibench/run_genaibench_sd21.yaml)
-- [examples/genaibench/run_genaibench_sdxl.yaml](examples/genaibench/run_genaibench_sdxl.yaml)
-- [examples/ella/run_ella_sd15.yaml](examples/ella/run_ella_sd15.yaml)
-- [examples/t2i_corebench/run_t2i_corebench_qwen_image.yaml](examples/t2i_corebench/run_t2i_corebench_qwen_image.yaml)
-- [examples/t2i_corebench/run_t2i_corebench_existing_images.yaml](examples/t2i_corebench/run_t2i_corebench_existing_images.yaml)
-- [examples/geneval/run_sdxl.yaml](examples/geneval/run_sdxl.yaml)
-- [examples/geneval/run_zimage_turbo.yaml](examples/geneval/run_zimage_turbo.yaml)
-
-### 1.3 Example C: Geneval suite config
-
-Command:
+确认数据目录存在：
 
 ```bash
-uv run t2i-eval -f examples/geneval/run_suite.yaml -o results_suite
+find /root/autodl-tmp/exam/Benchmark_code/T2I-CoReBench/data \
+  -maxdepth 1 -type f | sort
 ```
 
-Parameters used in this example:
+### 2.5 T2I-CoReBench Judge 隔离环境
 
-| Parameter | Meaning |
-| --- | --- |
-| `-f examples/geneval/run_suite.yaml` | Load a geneval-focused suite config. |
-| `-o results_suite` | Override output directory for this run. |
-
-### 1.4 Example D: Custom pipeline (Z-Image Turbo)
-
-Command:
+Qwen-Image 生成环境和 Qwen3.5-9B vLLM 评分环境具有不同的 Torch/CUDA 依赖，因此 Judge 使用独立环境：
 
 ```bash
-uv run t2i-eval \
-  -m diffusers \
-  -a pipeline=ZImagePipeline,pretrained=Tongyi-MAI/Z-Image-Turbo,dtype=bfloat16 \
-  -g steps=8,seed=42,guidance_scale=0.0,height=1024,width=1024 \
-  -e geneval -E num_samples=2,sample_dir=./samples \
-  -o results_flux
+uv venv --python 3.13 /root/autodl-tmp/corebench-judge/.venv
+
+uv pip install \
+  --python /root/autodl-tmp/corebench-judge/.venv/bin/python \
+  --torch-backend=auto \
+  -U vllm qwen-vl-utils pillow
 ```
 
-Parameters used in this example:
-
-| Parameter | Meaning |
-| --- | --- |
-| `-a pipeline=ZImagePipeline` | Use a custom pipeline class. |
-| `-a pretrained=Tongyi-MAI/Z-Image-Turbo` | Load weights from this model repo. |
-| `-a dtype=bfloat16` | Set precision to BF16. |
-| `-g steps=8` | Use fewer steps for faster generation. |
-| `-g guidance_scale=0.0` | Set CFG guidance scale. |
-| `-g height=1024,width=1024` | Set output image size. |
-| `-E sample_dir=./samples` | Save generated samples for inspection. |
-
-Equivalent config-file example: [examples/geneval/run_zimage_turbo.yaml](examples/geneval/run_zimage_turbo.yaml)
-
-### 1.5 Example E: Accelerate multi-GPU launch
-
-Command:
+验证：
 
 ```bash
-uv run accelerate launch t2i-eval \
-  -f examples/geneval/run_multi.yaml \
-  -o results_accel \
+/root/autodl-tmp/corebench-judge/.venv/bin/python -c '
+import torch, vllm, transformers, qwen_vl_utils
+print("torch:", torch.__version__)
+print("vllm:", vllm.__version__)
+print("transformers:", transformers.__version__)
+'
+```
+
+YAML 中的 `judge_python` 必须指向这个 Python：
+
+```yaml
+judge_python: /root/autodl-tmp/corebench-judge/.venv/bin/python
+```
+
+## 3. 运行评测
+
+以下命令都从仓库根目录执行：
+
+```bash
+cd /root/autodl-tmp/exam/T2IEval-test
+export HF_HOME=/root/autodl-tmp/hf_cache
+export MODELSCOPE_CACHE=/root/autodl-tmp/modelscope_cache
+```
+
+环境已经完成 `uv sync` 时，推荐使用 `uv run --no-sync`，避免运行前再次解析或下载依赖。
+
+### 3.1 GenEval：SD1.5
+
+```bash
+uv run --no-sync t2i-eval \
+  -e geneval \
+  -f examples/geneval/run_geneval_sd15.yaml \
   --fail-fast
 ```
 
-Parameters used in this example:
+输出：
 
-| Parameter | Meaning |
-| --- | --- |
-| `accelerate launch` | Run the same CLI through Accelerate for multi-process/multi-GPU setup. |
-| `-f examples/geneval/run_multi.yaml` | Use YAML as the evaluation plan. |
-| `-o results_accel` | Output directory. |
-| `--fail-fast` | Stop immediately when any evaluator fails. |
-
----
-
-## 2. Make It Your Own
-
-Once the examples feel familiar, this is where the project becomes configurable rather than prescriptive.
-
-### 2.1 Documentation map
-
-- Main parameter index: [docs/parameters/overview.md](docs/parameters/overview.md)
-- Model parameters (`-m` / `-a`): [docs/parameters/models.md](docs/parameters/models.md)
-- Generation parameters (`-g` / `-G`): [docs/parameters/generation.md](docs/parameters/generation.md)
-- Evaluator parameters:
-  - Geneval: [docs/parameters/evaluators/geneval.md](docs/parameters/evaluators/geneval.md)
-  - Ella: [docs/parameters/evaluators/ella.md](docs/parameters/evaluators/ella.md)
-  - GenAI-Bench: [docs/parameters/evaluators/genaibench.md](docs/parameters/evaluators/genaibench.md)
-  - T2I-CoReBench: [docs/parameters/evaluators/t2i_corebench.md](docs/parameters/evaluators/t2i_corebench.md)
-- Extend models or evaluators: [docs/guides/extending.md](docs/guides/extending.md)
-
-Tip: if you only need a quick tweak, jump directly to the evaluator page you are running and scan `-E` / `-G` fields first.
-
-### 2.2 CLI vs YAML mapping
-
-| What you want to change | CLI syntax | YAML syntax | Documentation |
-| --- | --- | --- | --- |
-| Select model backend | `-m diffusers` | `model: diffusers` | [docs/parameters/models.md](docs/parameters/models.md) |
-| Set model initialization args | `-a key=value` | `model_args.<key>: value` | [docs/parameters/models.md](docs/parameters/models.md) |
-| Set global generation args | `-g key=value` | `generation.<key>: value` | [docs/parameters/generation.md](docs/parameters/generation.md) |
-| Add an evaluation task | `-e geneval` | `evaluations.geneval` | [docs/parameters/overview.md](docs/parameters/overview.md) |
-| Set evaluator-specific args | `-E key=value` or `-E name:key=value` | `evaluations.<name>.eval_args.<key>: value` | corresponding evaluator doc |
-| Set evaluator-specific generation overrides | `-G key=value` or `-G name:key=value` | `evaluations.<name>.gen_args.<key>: value` | [docs/parameters/generation.md](docs/parameters/generation.md) + evaluator doc |
-| Load a config file | `-f path/to/file.yaml` | N/A (this is a file-loading action) | examples in [examples/](examples/) |
-| Set output directory | `-o results_xxx` | `output.dir: results_xxx` (example in `run_suite.yaml`) | [examples/geneval/run_suite.yaml](examples/geneval/run_suite.yaml) |
-
-### 2.3 Choose evaluator docs by `-e` key
-
-| evaluator key (`-e`) | Documentation |
-| --- | --- |
-| `geneval` | [docs/parameters/evaluators/geneval.md](docs/parameters/evaluators/geneval.md) |
-| `ella` | [docs/parameters/evaluators/ella.md](docs/parameters/evaluators/ella.md) |
-| `genaibench` | [docs/parameters/evaluators/genaibench.md](docs/parameters/evaluators/genaibench.md) |
-| `t2i_corebench` | [docs/parameters/evaluators/t2i_corebench.md](docs/parameters/evaluators/t2i_corebench.md) |
-
-### 2.4 Precedence rules when values conflict
-
-1. If the same key appears multiple times, the later value wins.
-2. CLI overrides config file values. Example: `-g steps=10` overrides `generation.steps` in YAML.
-3. `-G` only overrides keys explicitly provided for that evaluator. Unspecified keys still come from global `-g` / `generation`.
-
-### 2.5 Debug-friendly knob: `num_samples`
-
-`num_samples` is a simple way to test feasibility before committing to a full benchmark run.
-
-- Purpose: run only a small subset of prompts/samples so you can verify that the full pipeline is healthy.
-- Typical debug values: `num_samples=2`, `num_samples=4`, or `num_samples=8`.
-- Why it helps: you can quickly catch config mistakes, missing dependencies, OOM issues, and evaluator errors.
-- Recommended workflow: begin with a small `num_samples`, then scale up once outputs and metrics look sane.
-
-Example:
-
-```bash
-uv run t2i-eval \
-  -m diffusers \
-  -a pretrained=runwayml/stable-diffusion-v1-5 \
-  -g steps=20,seed=42 \
-  -e geneval -E num_samples=4 \
-  -o results_debug
+```text
+/root/autodl-tmp/exam/results/results_geneval_sd15/
+└── results_geneval_diffusers.json
 ```
 
----
+### 3.2 ELLA / DPG-Bench：SD1.5
 
-## 3. CLI Quick Reference
+```bash
+uv run --no-sync t2i-eval \
+  -e ella \
+  -f examples/ella/run_ella_sd15.yaml \
+  --fail-fast
+```
 
-This table is intentionally compact. When you need accepted values or defaults, follow the links in the last column.
+输出：
 
-| Flag | Purpose | Where to find details |
-| --- | --- | --- |
-| `-m, --model` | Select model registry key | [docs/parameters/models.md](docs/parameters/models.md) |
-| `-a, --model-args` | Set model initialization args | [docs/parameters/models.md](docs/parameters/models.md) |
-| `-g, --gen` | Set global generation args | [docs/parameters/generation.md](docs/parameters/generation.md) |
-| `-e, --eval` | Add evaluator(s) | [docs/parameters/overview.md](docs/parameters/overview.md) |
-| `-E, --eval-args` | Set evaluator args | [docs/parameters/evaluators/geneval.md](docs/parameters/evaluators/geneval.md), task specs for [Ella](docs/parameters/evaluators/ella.md) and [GenAI-Bench](docs/parameters/evaluators/genaibench.md) |
-| `-G, --eval-gen` | Override generation args per evaluator | [docs/parameters/generation.md](docs/parameters/generation.md) + evaluator docs |
-| `-f, --file` | Load YAML/JSON config | examples in [examples/](examples/) |
-| `-o, --output-dir` | Set output directory | [examples/geneval/run_suite.yaml](examples/geneval/run_suite.yaml) |
-| `--fail-fast` | Stop after first failure | Example E in this README |
-| `--no-summary` | Suppress per-evaluator stdout summary | `t2i-eval --help` |
-| `--quiet / --verbose` | Control log verbosity | `t2i-eval --help` |
+```text
+/root/autodl-tmp/exam/results/results_ella_sd15/
+└── results_ella_diffusers.json
+```
 
----
+### 3.3 GenAI-Bench 冒烟测试
 
-## 4. Parameter-focused Troubleshooting
+第一次运行先生成 1 张图片，验证数据、模型和 scorer 是否能正常加载：
 
-| Symptom | How to check |
+```bash
+uv run --no-sync t2i-eval \
+  -e genaibench \
+  -f examples/genaibench/run_genaibench_smoke.yaml \
+  --fail-fast
+```
+
+冒烟测试只验证工程链路，不能与论文指标比较。
+
+### 3.4 GenAI-Bench：SD2.1 768
+
+```bash
+uv run --no-sync t2i-eval \
+  -e genaibench \
+  -f examples/genaibench/run_genaibench_sd21.yaml \
+  --fail-fast
+```
+
+### 3.5 GenAI-Bench：SDXL
+
+```bash
+uv run --no-sync t2i-eval \
+  -e genaibench \
+  -f examples/genaibench/run_genaibench_sdxl.yaml \
+  --fail-fast
+```
+
+两个正式配置分别输出到：
+
+```text
+/root/autodl-tmp/exam/results/results_genaibench_sd21/
+/root/autodl-tmp/exam/results/results_genaibench_sdxl/
+```
+
+### 3.6 T2I-CoReBench 冒烟测试
+
+冒烟配置只运行 `C-MI` 的一个 Prompt：
+
+```bash
+uv run --no-sync t2i-eval \
+  -e t2i_corebench \
+  -f examples/t2i_corebench/run_t2i_corebench_qwen_image_smoke.yaml \
+  --fail-fast
+```
+
+确认真实图片和本地 Judge 均能运行后，再启动正式任务。
+
+### 3.7 T2I-CoReBench：Qwen-Image 部分维度
+
+当前正式配置评测 `C-MI`、`C-MR`、`R-LR`、`R-CR` 四个维度，每个 Prompt 生成 1 张图片：
+
+```bash
+uv run --no-sync t2i-eval \
+  -e t2i_corebench \
+  -f examples/t2i_corebench/run_t2i_corebench_qwen_image.yaml \
+  --fail-fast
+```
+
+该配置已经启用：
+
+```yaml
+output:
+  save_images: true
+  resume: true
+  write_artifacts: true
+```
+
+任务中断后，使用同一 YAML 再次执行相同命令即可断点续跑。框架会复用已经完整保存的图片和 Judge cache。
+
+### 3.8 只评测已有图片
+
+先修改：
+
+```text
+examples/t2i_corebench/run_t2i_corebench_existing_images.yaml
+```
+
+将 `image_dir` 指向图片目录。目录格式为：
+
+```text
+<image_dir>/
+├── C-MI/
+│   ├── C-MI-001-0.png
+│   └── C-MI-001-1.png
+└── R-CR/
+    └── R-CR-001-0.png
+```
+
+运行：
+
+```bash
+uv run --no-sync t2i-eval \
+  -e t2i_corebench \
+  -f examples/t2i_corebench/run_t2i_corebench_existing_images.yaml \
+  --fail-fast
+```
+
+## 4. 输出文件
+
+每次运行至少生成一个兼容旧格式的结果文件：
+
+```text
+<output_dir>/results_<benchmark>_<model-adapter>.json
+```
+
+当 YAML 设置 `write_artifacts: true` 时，还会生成：
+
+```text
+<output_dir>/runs/<run_id>/
+├── config.json          # 本次模型、Benchmark 和生成配置
+├── environment.json     # Python、依赖、GPU 和 Git commit
+├── metrics.json         # 结构化指标
+├── samples.jsonl        # 样本级结果
+├── questions.jsonl      # T2I-CoReBench 问题级结果
+├── judge_cache.jsonl    # 可复用的本地 Judge 回答
+├── images/              # 开启 save_images 后保存图片
+└── complete.marker      # 运行成功完成标记
+```
+
+不同 Benchmark 的指标定义不同，不能直接横向比较绝对数值。复现时应同时记录 checkpoint、图片尺寸、steps、CFG、seed、图片数量和 scorer 版本。
+
+## 5. 常见问题
+
+| 问题 | 处理方法 |
 | --- | --- |
-| `Model 'xxx' is not registered` | Verify `-m` is a supported key in [docs/parameters/models.md](docs/parameters/models.md). |
-| `Evaluator 'xxx' is not registered` | Verify `-e` spelling and confirm evaluator support in docs. |
-| `extra fields not permitted` | You passed unsupported keys. Check exact key names in the corresponding parameter doc. |
-| Unexpected results | Verify `seed`, `steps`, and `guidance_scale` were not overridden later by `-G` or another repeated flag. |
+| `hf` 或 `modelscope` 找不到 | 使用 `uv run --no-sync hf ...` 或 `uv run --no-sync modelscope ...`。 |
+| 运行时重复检查或下载模型 | 确保下载和运行使用同一个 `HF_HOME`，并检查 YAML 中的本地模型路径。 |
+| Hugging Face 下载较慢 | 设置 `HF_ENDPOINT=https://hf-mirror.com` 和 `HF_HUB_DISABLE_XET=1`，中断后重复原命令可续传。 |
+| `403 GatedRepoError` | 在模型主页接受协议并执行 `uv run --no-sync hf auth login`；镜像仍报错时临时 `unset HF_ENDPOINT`。 |
+| GenEval、ELLA 或 GenAI-Bench 缺少评分模型 | 按第 2.3 节准备 Mask2Former、mPLUG、CLIP-FlanT5 和 CLIP vision tower。 |
+| 显存不足 | 先运行 smoke YAML，再酌情减小图片数量、分辨率或 scorer/Judge batch size；调试配置不能用于论文指标对比。 |
+| T2I-CoReBench Judge 启动失败 | 检查 `judge_python` 是否指向独立 vLLM 环境，并从日志中查找第一个 Worker traceback。 |
+| 长任务中断 | 保持相同 YAML 和输出目录重新运行；`resume: true` 时会复用已保存图片和 Judge cache。 |
 
----
+## 6. 测试与进一步说明
 
-## 5. Source Entry Points
+运行项目测试：
 
-- CLI entrypoint: `src/t2i_eval/cli/main.py`
-- Config merging: `src/t2i_eval/cli/config_loader.py`
-- Runner orchestration: `src/t2i_eval/cli/runner.py`
-- Registry: `src/t2i_eval/core/registry.py`
-- Core schema: `src/t2i_eval/core/schema.py`
+```bash
+uv run --no-sync pytest -q
+```
 
-For day-to-day use, most readers only need Sections 0 through 2.
+详细参数与实现说明：
+
+- [模型参数](docs/parameters/models.md)
+- [生成参数](docs/parameters/generation.md)
+- [GenEval 参数](docs/parameters/evaluators/geneval.md)
+- [ELLA 参数](docs/parameters/evaluators/ella.md)
+- [GenAI-Bench 参数](docs/parameters/evaluators/genaibench.md)
+- [T2I-CoReBench 参数](docs/parameters/evaluators/t2i_corebench.md)
+- [扩展新模型或 Benchmark](docs/guides/extending.md)
